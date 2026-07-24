@@ -1,0 +1,281 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Local lakehouse stack (Phase 2).
+#
+#   make up        bring everything up          make down    tear it down
+#   make ps        show health                  make logs    tail everything
+#
+# Service URLs (host):
+#   MinIO console      http://localhost:9001   (minioadmin / minioadmin)
+#   Iceberg REST       http://localhost:8181
+#   Redpanda Console   http://localhost:8080
+#   Airflow            http://localhost:8081   (admin / admin)
+#   Spark master UI    http://localhost:8082
+#   Spark / Jupyter    http://localhost:8888
+#   Marquez UI         http://localhost:3000
+#   Marquez API        http://localhost:5000
+#
+# DuckDB is an embedded library (used by dbt in Phase 4), not a service.
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/airflow/Dockerfile
+  image: gdelt/airflow:local
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    # Make the gdelt_pipeline package importable from the mounted source tree.
+    PYTHONPATH: /opt/airflow/src
+    # Point the pipeline at the in-network services (not localhost).
+    GDELT_ENV: local
+    GDELT_S3_ENDPOINT_URL: http://minio:9000
+    GDELT_S3_ACCESS_KEY: minioadmin
+    GDELT_S3_SECRET_KEY: minioadmin
+    GDELT_S3_REGION: us-east-1
+    GDELT_BRONZE_BUCKET: gdelt-bronze
+    GDELT_SILVER_BUCKET: gdelt-silver
+    GDELT_ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+    GDELT_ICEBERG_WAREHOUSE: s3://gdelt-silver/warehouse
+    GDELT_KAFKA_BOOTSTRAP: redpanda:9092
+    GDELT_KAFKA_TOPIC: gdelt.events.raw
+    # Emit OpenLineage events to Marquez.
+    AIRFLOW__OPENLINEAGE__TRANSPORT: '{"type": "http", "url": "http://marquez:5000", "endpoint": "api/v1/lineage"}'
+    AIRFLOW__OPENLINEAGE__NAMESPACE: gdelt-lakehouse
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./src:/opt/airflow/src
+    - ./dbt:/opt/airflow/dbt
+    - ./spark:/opt/airflow/spark
+  depends_on: &airflow-deps
+    airflow-db:
+      condition: service_healthy
+  networks: [gdelt]
+
+services:
+  # ── Object storage ──────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [gdelt]
+
+  # Creates the bronze/silver buckets, then exits.
+  minio-setup:
+    image: minio/mc:RELEASE.2024-07-11T18-01-28Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/gdelt-bronze &&
+      mc mb --ignore-existing local/gdelt-silver &&
+      echo 'buckets ready';
+      "
+    networks: [gdelt]
+
+  # ── Iceberg REST catalog (Phase 3 silver tables live here) ──────────────────
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:1.6.0
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://gdelt-silver/warehouse
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    ports:
+      - "8181:8181"
+    networks: [gdelt]
+
+  # ── Spark + Iceberg (Phase 3 bronze→silver jobs) ────────────────────────────
+  spark-iceberg:
+    image: tabulario/spark-iceberg:3.5.1_1.6.0
+    depends_on:
+      iceberg-rest:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+    ports:
+      - "8888:8888"   # Jupyter
+      - "8082:8080"   # Spark master UI
+      - "7077:7077"   # Spark master
+    volumes:
+      - ./spark:/home/iceberg/work
+    networks: [gdelt]
+
+  # ── Streaming (Phase 6 live event stream) ───────────────────────────────────
+  redpanda:
+    image: redpandadata/redpanda:v24.1.9
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
+    ports:
+      - "19092:19092"   # Kafka API (host)
+      - "18081:18081"   # schema registry
+      - "18082:18082"   # pandaproxy
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [gdelt]
+
+  redpanda-console:
+    image: redpandadata/console:v2.6.0
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    networks: [gdelt]
+
+  # ── Lineage (OpenLineage → Marquez) ─────────────────────────────────────────
+  marquez-db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: marquez
+      POSTGRES_DB: marquez
+    volumes:
+      - marquez-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marquez"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [gdelt]
+
+  marquez:
+    image: marquezproject/marquez:0.49.0
+    depends_on:
+      marquez-db:
+        condition: service_healthy
+    environment:
+      MARQUEZ_PORT: 5000
+      MARQUEZ_ADMIN_PORT: 5001
+      POSTGRES_HOST: marquez-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: marquez
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: marquez
+    ports:
+      - "5000:5000"   # API
+      - "5001:5001"   # admin
+    networks: [gdelt]
+
+  marquez-web:
+    image: marquezproject/marquez-web:0.49.0
+    depends_on:
+      marquez:
+        condition: service_started
+    environment:
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: 5000
+      WEB_PORT: 3000
+    ports:
+      - "3000:3000"
+    networks: [gdelt]
+
+  # ── Orchestration (Airflow, LocalExecutor) ──────────────────────────────────
+  airflow-db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [gdelt]
+
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    entrypoint: >
+      /bin/bash -c "
+      airflow db migrate &&
+      airflow users create
+        --username admin --password admin
+        --firstname admin --lastname admin
+        --role Admin --email admin@example.com || true
+      "
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8081:8080"
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      <<: *airflow-deps
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+networks:
+  gdelt:
+    driver: bridge
+
+volumes:
+  minio-data:
+  redpanda-data:
+  marquez-db-data:
+  airflow-db-data:
