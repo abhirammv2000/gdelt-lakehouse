@@ -74,6 +74,26 @@ make backfill FROM=2026-07-20 TO=2026-07-21
 make test
 ```
 
+### Local stack services
+
+`make up` builds the Airflow image and starts everything (`make ps` shows health).
+Once up, these are reachable on the host:
+
+| Service | URL | Credentials |
+|---|---|---|
+| Airflow | http://localhost:8081 | `admin` / `admin` |
+| MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
+| Redpanda Console | http://localhost:8080 | — |
+| Spark master UI | http://localhost:8082 | — |
+| Spark / Jupyter | http://localhost:8888 | — |
+| Marquez (lineage) UI | http://localhost:3000 | — |
+| Iceberg REST catalog | http://localhost:8181 | — |
+
+The bronze/silver MinIO buckets are created automatically on startup. Trigger the
+`stack_healthcheck` DAG in Airflow to smoke-test that the pipeline package is
+importable and object storage is reachable. DuckDB is an embedded library (used by
+dbt in Phase 4), so it has no container of its own.
+
 ## Repository layout
 
 ```
@@ -81,6 +101,8 @@ src/gdelt_pipeline/       Python package
   config.py                 env-driven settings (local ⇄ aws)
   schema/events.py          authoritative 61-column GDELT event schema
   ingestion/                poll · download · verify · land · checkpoint  (CLI: `gdelt`)
+docker/airflow/            custom Airflow image (deps + providers)   (Phase 2)
+docker-compose.yml         local lakehouse stack                     (Phase 2)
 spark/                     PySpark bronze→silver Iceberg jobs        (Phase 3)
 dbt/                       gold-layer star schema + tests            (Phase 4)
 airflow/dags/              incremental + backfill DAGs               (Phase 5)
@@ -104,7 +126,7 @@ tests/                     unit + integration tests
 ## Build status
 
 Built in phases — see the roadmap in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phase 0 (scaffold) and Phase 1 (ingestion) are complete and tested.
+Phases 0 (scaffold), 1 (ingestion), and 2 (local Docker Compose stack) are complete.
 
 ## License
 

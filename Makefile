@@ -1,6 +1,6 @@
 # GDELT Lakehouse — developer entrypoints
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint test up down logs ingest backfill dbt-build clean
+.PHONY: help install fmt lint test build up down ps logs ingest backfill dbt-build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -21,11 +21,17 @@ lint: ## Lint + type-check
 test: ## Run the test suite with coverage
 	pytest
 
-up: ## Start the local stack (MinIO, Airflow, Spark, DuckDB, Redpanda, Marquez)
+build: ## Build the custom Airflow image
+	docker compose build
+
+up: ## Start the local stack (MinIO, Iceberg, Spark, Redpanda, Marquez, Airflow)
 	docker compose up -d
 
-down: ## Stop the local stack
-	docker compose down
+down: ## Stop the local stack (add v=1 to also drop volumes: make down v=1)
+	docker compose down $(if $(v),--volumes,)
+
+ps: ## Show container status / health
+	docker compose ps
 
 logs: ## Tail all container logs
 	docker compose logs -f

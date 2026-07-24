@@ -9,7 +9,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,7 +35,7 @@ class Settings(BaseSettings):
     silver_bucket: str = "gdelt-silver"
 
     # Iceberg REST catalog
-    iceberg_catalog_uri: str = "http://localhost:8181/api/catalog"
+    iceberg_catalog_uri: str = "http://localhost:8181"
     iceberg_warehouse: str = "s3://gdelt-silver/warehouse"
 
     # HTTP behaviour
