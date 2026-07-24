@@ -94,7 +94,7 @@ services:
 
   # ── Iceberg REST catalog (Phase 3 silver tables live here) ──────────────────
   iceberg-rest:
-    image: apache/iceberg-rest-fixture:1.6.0
+    image: apache/iceberg-rest-fixture:1.8.1
     depends_on:
       minio-setup:
         condition: service_completed_successfully
@@ -112,7 +112,7 @@ services:
 
   # ── Spark + Iceberg (Phase 3 bronze→silver jobs) ────────────────────────────
   spark-iceberg:
-    image: tabulario/spark-iceberg:3.5.1_1.6.0
+    image: tabulario/spark-iceberg:3.5.5_1.8.1
     depends_on:
       iceberg-rest:
         condition: service_started
@@ -181,21 +181,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-    networks: [gdelt]
+    networks:
+      gdelt:
+        # Marquez's baked config hardcodes host "postgres"; this alias points it here.
+        aliases: [postgres]
 
   marquez:
     image: marquezproject/marquez:0.49.0
     depends_on:
       marquez-db:
         condition: service_healthy
+    # The image's marquez.dev.yml reads only these; DB host/name/user are baked
+    # (host "postgres", db/user/password "marquez") — matched by marquez-db above.
     environment:
       MARQUEZ_PORT: 5000
       MARQUEZ_ADMIN_PORT: 5001
-      POSTGRES_HOST: marquez-db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: marquez
-      POSTGRES_USER: marquez
-      POSTGRES_PASSWORD: marquez
     ports:
       - "5000:5000"   # API
       - "5001:5001"   # admin
