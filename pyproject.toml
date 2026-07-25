@@ -56,6 +56,10 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "UP", "B", "SIM", "N", "C4", "PTH"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# `from pyspark.sql import functions as F` is the universal PySpark idiom.
+"spark/**/*.py" = ["N812"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

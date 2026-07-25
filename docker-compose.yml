@@ -112,7 +112,10 @@ services:
 
   # ── Spark + Iceberg (Phase 3 bronze→silver jobs) ────────────────────────────
   spark-iceberg:
-    image: tabulario/spark-iceberg:3.5.5_1.8.1
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+    image: gdelt/spark-iceberg:local
     depends_on:
       iceberg-rest:
         condition: service_started
@@ -122,12 +125,23 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
       AWS_REGION: us-east-1
+      # Pipeline config the bronze->silver job reads (same names as .env.example).
+      GDELT_S3_ENDPOINT_URL: http://minio:9000
+      GDELT_S3_ACCESS_KEY: minioadmin
+      GDELT_S3_SECRET_KEY: minioadmin
+      GDELT_S3_REGION: us-east-1
+      GDELT_BRONZE_BUCKET: gdelt-bronze
+      GDELT_ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      GDELT_ICEBERG_WAREHOUSE: s3://gdelt-silver/warehouse
+      # Preserve the image's Spark/py4j paths, then add our mounted code.
+      PYTHONPATH: /opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip:/opt/gdelt/src:/home/iceberg/work
     ports:
       - "8888:8888"   # Jupyter
       - "8082:8080"   # Spark master UI
       - "7077:7077"   # Spark master
     volumes:
       - ./spark:/home/iceberg/work
+      - ./src:/opt/gdelt/src
     networks: [gdelt]
 
   # ── Streaming (Phase 6 live event stream) ───────────────────────────────────
