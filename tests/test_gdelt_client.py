@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -20,7 +20,7 @@ def test_parse_line_extracts_timestamp_and_feed() -> None:
     assert f is not None
     assert f.feed == "export"
     assert f.size == 227762
-    assert f.timestamp == datetime(2026, 7, 23, 12, 15, 0, tzinfo=timezone.utc)
+    assert f.timestamp == datetime(2026, 7, 23, 12, 15, 0, tzinfo=UTC)
     assert f.partition_path == "dt=2026-07-23/hour=12"
 
 
