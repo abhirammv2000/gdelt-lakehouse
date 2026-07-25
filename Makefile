@@ -1,6 +1,6 @@
 # GDELT Lakehouse — developer entrypoints
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint test build up down ps logs ingest backfill dbt-build clean
+.PHONY: help install fmt lint test build up down ps logs ingest backfill spark-build spark-test silver dbt-build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -41,6 +41,15 @@ ingest: ## Ingest the latest GDELT update into bronze
 
 backfill: ## Backfill a window, e.g. make backfill FROM=2026-07-20 TO=2026-07-21
 	gdelt backfill --start $(FROM) --end $(TO)
+
+spark-build: ## Build the custom Spark image (boto3 + pytest)
+	docker compose build spark-iceberg
+
+spark-test: ## Run the Spark unit tests inside the container
+	docker compose exec -T spark-iceberg bash -lc "cd /home/iceberg/work && python -m pytest tests -q"
+
+silver: ## Run bronze->silver Iceberg job, e.g. make silver FEED=export
+	docker compose exec -T spark-iceberg spark-submit /home/iceberg/work/jobs/bronze_to_silver.py --feed $(if $(FEED),$(FEED),export)
 
 dbt-build: ## Run dbt build (models + tests) in the gold layer
 	cd dbt && dbt build

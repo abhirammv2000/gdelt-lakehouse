@@ -94,6 +94,31 @@ The bronze/silver MinIO buckets are created automatically on startup. Trigger th
 importable and object storage is reachable. DuckDB is an embedded library (used by
 dbt in Phase 4), so it has no container of its own.
 
+### Bronze → silver (PySpark + Iceberg)
+
+The silver layer turns the raw bronze zips into a typed, deduplicated **Iceberg**
+table via a PySpark job:
+
+```bash
+make ingest         # land a raw GDELT batch into bronze (MinIO)
+make spark-test     # run the Spark unit tests inside the container
+make silver         # bronze -> silver: parse 61 cols, type/clean/dedup, DQ gate, MERGE
+```
+
+What the job does, in one pass:
+
+- **Reads** every `*.CSV.zip` under the bronze prefix with boto3 (no `s3a` needed),
+  unzips and splits the tab-delimited 61-column rows on the executors.
+- **Types & cleans** each column from the authoritative `EVENT_COLUMNS` schema —
+  empty strings become `NULL`, dates/timestamps are parsed, numerics cast.
+- **De-duplicates** on `global_event_id`, keeping the most recently added record.
+- **Validates** a data-quality suite (unique/not-null keys, `quad_class ∈ {1..4}`,
+  Goldstein/tone/geo ranges); `error`-severity failures abort before any write.
+- **MERGEs** into `lakehouse.gdelt.events`, partitioned by `days(sql_date)`. The
+  merge keys on the event id and only overwrites with newer records, so re-running
+  the job on the same bronze data is a **no-op** — a new Iceberg snapshot with zero
+  net row change. Query `lakehouse.gdelt.events.snapshots` to see the history.
+
 ## Repository layout
 
 ```
@@ -101,9 +126,12 @@ src/gdelt_pipeline/       Python package
   config.py                 env-driven settings (local ⇄ aws)
   schema/events.py          authoritative 61-column GDELT event schema
   ingestion/                poll · download · verify · land · checkpoint  (CLI: `gdelt`)
-docker/airflow/            custom Airflow image (deps + providers)   (Phase 2)
+docker/                    custom Airflow + Spark images             (Phase 2-3)
 docker-compose.yml         local lakehouse stack                     (Phase 2)
-spark/                     PySpark bronze→silver Iceberg jobs        (Phase 3)
+spark/                     PySpark bronze→silver Iceberg job         (Phase 3)
+  gdelt_spark/               read (boto3+unzip) · transform · validate · iceberg
+  jobs/bronze_to_silver.py   spark-submit entrypoint (idempotent MERGE)
+  tests/                     Spark unit tests (run in-container)
 dbt/                       gold-layer star schema + tests            (Phase 4)
 airflow/dags/              incremental + backfill DAGs               (Phase 5)
 great_expectations/        data-quality suites                       (Phase 6)
@@ -126,7 +154,9 @@ tests/                     unit + integration tests
 ## Build status
 
 Built in phases — see the roadmap in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phases 0 (scaffold), 1 (ingestion), and 2 (local Docker Compose stack) are complete.
+Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), and 3
+(PySpark bronze→silver Iceberg + data-quality gate) are complete and verified
+against the running stack.
 
 ## License
 

@@ -7,8 +7,8 @@ Built in verifiable increments — each phase runs and is tested before the next
 | **0** | Repo scaffold: package layout, `pyproject`, ruff/mypy/pre-commit, Makefile, README | ✅ Done |
 | **1** | GDELT ingestion: poll feed, MD5-verify, idempotent checkpointing, land raw to bronze (S3/MinIO); CLI `gdelt`; unit + integration tests | ✅ Done |
 | **2** | Local stack via Docker Compose: MinIO, Iceberg REST, Spark, Redpanda, Marquez, Airflow | ✅ Done |
-| **3** | PySpark bronze→silver: parse 61-col schema, type/clean/dedup, write **Iceberg** tables + Great Expectations | ⏳ Next |
-| **4** | dbt gold layer: star schema (`fact_events` + `dim_actor`/`dim_geography`/`dim_date`/`dim_cameo_event`), tests, docs | ◻ Planned |
+| **3** | PySpark bronze→silver: parse 61-col schema, type/clean/dedup, write **Iceberg** table + data-quality gate | ✅ Done |
+| **4** | dbt gold layer: star schema (`fact_events` + `dim_actor`/`dim_geography`/`dim_date`/`dim_cameo_event`), tests, docs | ⏳ Next |
 | **5** | Airflow DAGs: 15-min incremental + parameterized backfill, wiring ingest→spark→dbt with retries/SLAs | ◻ Planned |
 | **6** | Data quality gates + streaming: Kafka/Redpanda producer & consumer for the live event stream | ◻ Planned |
 | **7** | Terraform (AWS: S3, Glue/Iceberg, IAM, MWAA/Snowflake), GitHub Actions CI/CD, OpenLineage observability, polished README | ◻ Planned |
