@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -58,7 +58,7 @@ def _parse_line(line: str) -> GdeltFile | None:
     m = _FILENAME_RE.search(url)
     if not m:
         return None
-    ts = datetime.strptime(m.group(1), "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+    ts = datetime.strptime(m.group(1), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
     return GdeltFile(url=url, size=int(size), md5=md5, timestamp=ts, feed=m.group(2).lower())
 
 

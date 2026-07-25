@@ -9,7 +9,7 @@ safe to retry.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import fsspec
 
@@ -39,7 +39,7 @@ class Checkpoint:
         current = state.get(feed)
         if current and datetime.fromisoformat(current) >= ts:
             return
-        state[feed] = ts.astimezone(timezone.utc).isoformat()
+        state[feed] = ts.astimezone(UTC).isoformat()
         parent = self._uri.rsplit("/", 1)[0]
         self._fs.makedirs(parent, exist_ok=True)
         with self._fs.open(self._uri, "w") as fh:
