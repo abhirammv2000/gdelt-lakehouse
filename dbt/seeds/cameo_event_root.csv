@@ -1,0 +1,21 @@
+event_root_code,root_description,quad_class,quad_class_name
+01,Make Public Statement,1,Verbal Cooperation
+02,Appeal,1,Verbal Cooperation
+03,Express Intent to Cooperate,1,Verbal Cooperation
+04,Consult,1,Verbal Cooperation
+05,Engage in Diplomatic Cooperation,2,Material Cooperation
+06,Engage in Material Cooperation,2,Material Cooperation
+07,Provide Aid,2,Material Cooperation
+08,Yield,2,Material Cooperation
+09,Investigate,3,Verbal Conflict
+10,Demand,3,Verbal Conflict
+11,Disapprove,3,Verbal Conflict
+12,Reject,3,Verbal Conflict
+13,Threaten,3,Verbal Conflict
+14,Protest,3,Verbal Conflict
+15,Exhibit Force Posture,3,Verbal Conflict
+16,Reduce Relations,3,Verbal Conflict
+17,Coerce,4,Material Conflict
+18,Assault,4,Material Conflict
+19,Fight,4,Material Conflict
+20,Engage in Unconventional Mass Violence,4,Material Conflict

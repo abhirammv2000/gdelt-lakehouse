@@ -22,6 +22,8 @@ data/
 *.zip
 *.parquet
 !tests/**/fixtures/**
+# dbt seeds are source code, not data
+!dbt/seeds/*.csv
 
 # Tooling
 .pytest_cache/
@@ -35,6 +37,9 @@ htmlcov/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+dbt/.user.yml
+*.duckdb
+*.duckdb.wal
 
 # Airflow
 airflow/logs/

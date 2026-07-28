@@ -106,8 +106,16 @@ services:
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      # Persist the JDBC catalog to a SQLite file on a volume. The image default
+      # is jdbc:sqlite::memory:, which is per-connection and lost on restart, so
+      # table registrations vanished even though data files survived in MinIO.
+      CATALOG_URI: jdbc:sqlite:/home/iceberg/catalog.db
     ports:
       - "8181:8181"
+    volumes:
+      # /home/iceberg is owned by uid 1000 in the image, so the named volume
+      # inherits that ownership and stays writable by the non-root process.
+      - iceberg-catalog:/home/iceberg
     networks: [gdelt]
 
   # ── Spark + Iceberg (Phase 3 bronze→silver jobs) ────────────────────────────
@@ -294,3 +302,4 @@ volumes:
   redpanda-data:
   marquez-db-data:
   airflow-db-data:
+  iceberg-catalog:
