@@ -49,7 +49,7 @@ spark-test: ## Run the Spark unit tests inside the container
 	docker compose exec -T spark-iceberg bash -lc "cd /home/iceberg/work && python -m pytest tests -q"
 
 silver: ## Run bronze->silver Iceberg job, e.g. make silver FEED=export
-	docker compose exec -T spark-iceberg spark-submit /home/iceberg/work/jobs/bronze_to_silver.py --feed $(if $(FEED),$(FEED),export)
+	docker compose exec -T spark-iceberg bash -c 'spark-submit /home/iceberg/work/jobs/bronze_to_silver.py --feed $(if $(FEED),$(FEED),export)'
 
 dbt-build: ## Run dbt build (models + tests) in the gold layer
 	cd dbt && dbt build
