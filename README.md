@@ -70,7 +70,13 @@ make ingest
 # 4. Backfill a historical window
 make backfill FROM=2026-07-20 TO=2026-07-21
 
-# 5. Run the tests
+# 5. Transform bronze -> silver (typed, deduped Iceberg table)
+make silver
+
+# 6. Build the gold star schema + run dbt tests
+make dbt-build
+
+# 7. Run the tests
 make test
 ```
 
@@ -133,6 +139,9 @@ spark/                     PySpark bronze→silver Iceberg job         (Phase 3)
   jobs/bronze_to_silver.py   spark-submit entrypoint (idempotent MERGE)
   tests/                     Spark unit tests (run in-container)
 dbt/                       gold-layer star schema + tests            (Phase 4)
+  models/staging/            stg_events (reads the Iceberg silver table)
+  models/marts/              fact_events + dim_date/actor/geography/cameo_event
+  seeds/                     CAMEO root-code lookup
 airflow/dags/              incremental + backfill DAGs               (Phase 5)
 great_expectations/        data-quality suites                       (Phase 6)
 streaming/                 Kafka producer/consumer                   (Phase 6)
@@ -154,9 +163,10 @@ tests/                     unit + integration tests
 ## Build status
 
 Built in phases — see the roadmap in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), and 3
-(PySpark bronze→silver Iceberg + data-quality gate) are complete and verified
-against the running stack.
+Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), 3 (PySpark
+bronze→silver Iceberg + data-quality gate), and 4 (dbt gold star schema on DuckDB,
+reading the Iceberg silver table straight from the REST catalog) are complete and
+verified against the running stack.
 
 ## License
 

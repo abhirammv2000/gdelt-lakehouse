@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      The silver medallion layer: one typed, de-duplicated row per GDELT event,
+      written as an Apache Iceberg table by the PySpark bronze->silver job and
+      read here through the Iceberg REST catalog attached as the `lake` database.
+    database: lake
+    schema: gdelt
+    tables:
+      - name: events
+        description: "Typed, deduped GDELT 2.0 events (grain: one global_event_id)."
+        columns:
+          - name: global_event_id
+            description: "GDELT's globally unique event id."
+            data_tests: [not_null, unique]

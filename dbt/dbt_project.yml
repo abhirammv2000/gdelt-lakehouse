@@ -1,0 +1,30 @@
+name: gdelt_gold
+version: 1.0.0
+config-version: 2
+
+# Uses the profile defined in dbt/profiles.yml (run with --profiles-dir .).
+profile: gdelt_gold
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets: [target, dbt_packages]
+
+models:
+  gdelt_gold:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  gdelt_gold:
+    cameo_event_root:
+      +column_types:
+        # Keep the leading zeros ("01".."09"); otherwise they'd load as ints.
+        event_root_code: varchar

@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: "Calendar dimension, one row per event date. Grain: date_key (yyyymmdd)."
+    columns:
+      - name: date_key
+        description: "yyyymmdd integer surrogate/business key."
+        data_tests: [unique, not_null]
+      - name: is_weekend
+        description: "True for Saturday/Sunday event dates."
+
+  - name: dim_actor
+    description: >
+      Actor dimension keyed by CAMEO actor code, built from both actor roles
+      across all events.
+    columns:
+      - name: actor_key
+        description: "md5(actor_code) surrogate key."
+        data_tests: [unique, not_null]
+      - name: actor_code
+        description: "CAMEO actor code (natural key)."
+        data_tests: [not_null]
+
+  - name: dim_geography
+    description: "Location dimension from each event's action geography."
+    columns:
+      - name: geo_key
+        description: "md5(feature_id|fullname) surrogate key."
+        data_tests: [unique, not_null]
+      - name: geo_type_name
+        description: "Human-readable GDELT geo type (Country, US City, World City, ...)."
+
+  - name: dim_cameo_event
+    description: "CAMEO event-type dimension enriched with root category labels."
+    columns:
+      - name: cameo_key
+        description: "md5(event_code) surrogate key."
+        data_tests: [unique, not_null]
+      - name: quad_class
+        description: "CAMEO quad class 1-4 (verbal/material x cooperation/conflict)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+
+  - name: fact_events
+    description: >
+      One row per GDELT event with foreign keys to every dimension and the event
+      measures (Goldstein scale, tone, mention/source/article counts).
+    columns:
+      - name: event_key
+        description: "global_event_id (grain of the fact)."
+        data_tests: [unique, not_null]
+      - name: date_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: actor1_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_actor')
+                field: actor_key
+              config:
+                where: "actor1_key is not null"
+      - name: actor2_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_actor')
+                field: actor_key
+              config:
+                where: "actor2_key is not null"
+      - name: action_geo_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: geo_key
+              config:
+                where: "action_geo_key is not null"
+      - name: cameo_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_cameo_event')
+                field: cameo_key
+              config:
+                where: "cameo_key is not null"

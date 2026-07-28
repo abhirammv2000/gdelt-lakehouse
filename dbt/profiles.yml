@@ -1,0 +1,30 @@
+# dbt-duckdb profile. The gold layer is built in DuckDB, reading the silver
+# Iceberg table straight from the REST catalog on MinIO (proven bridge).
+#
+# Run from the dbt/ directory with:  dbt build --profiles-dir .
+gdelt_gold:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'gold.duckdb') }}"
+      threads: 4
+      # httpfs = S3/MinIO access; iceberg = read the silver Iceberg tables.
+      extensions:
+        - httpfs
+        - iceberg
+      # Point DuckDB's S3 client at MinIO (path-style, plain HTTP).
+      settings:
+        s3_endpoint: "{{ env_var('GDELT_DUCKDB_S3_ENDPOINT', 'localhost:9000') }}"
+        s3_access_key_id: "{{ env_var('GDELT_S3_ACCESS_KEY', 'minioadmin') }}"
+        s3_secret_access_key: "{{ env_var('GDELT_S3_SECRET_KEY', 'minioadmin') }}"
+        s3_url_style: path
+        s3_use_ssl: false
+      # Attach the Iceberg REST catalog as database "lake" (no auth locally).
+      attach:
+        - path: ""
+          alias: lake
+          type: iceberg
+          options:
+            endpoint: "{{ env_var('GDELT_ICEBERG_CATALOG_URI', 'http://localhost:8181') }}"
+            authorization_type: none
