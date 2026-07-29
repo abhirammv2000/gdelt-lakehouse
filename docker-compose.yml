@@ -42,6 +42,9 @@ x-airflow-common: &airflow-common
     GDELT_ICEBERG_WAREHOUSE: s3://gdelt-silver/warehouse
     GDELT_KAFKA_BOOTSTRAP: redpanda:9092
     GDELT_KAFKA_TOPIC: gdelt.events.raw
+    # dbt (gold) config for in-container runs: MinIO host + a stable duckdb path.
+    GDELT_DUCKDB_S3_ENDPOINT: minio:9000
+    DBT_DUCKDB_PATH: /opt/airflow/dbt/gold.duckdb
     # Emit OpenLineage events to Marquez.
     AIRFLOW__OPENLINEAGE__TRANSPORT: '{"type": "http", "url": "http://marquez:5000", "endpoint": "api/v1/lineage"}'
     AIRFLOW__OPENLINEAGE__NAMESPACE: gdelt-lakehouse
@@ -52,6 +55,8 @@ x-airflow-common: &airflow-common
     - ./src:/opt/airflow/src
     - ./dbt:/opt/airflow/dbt
     - ./spark:/opt/airflow/spark
+    # Lets the bronze->silver task exec spark-submit in the Spark container.
+    - /var/run/docker.sock:/var/run/docker.sock
   depends_on: &airflow-deps
     airflow-db:
       condition: service_healthy
@@ -109,7 +114,9 @@ services:
       # Persist the JDBC catalog to a SQLite file on a volume. The image default
       # is jdbc:sqlite::memory:, which is per-connection and lost on restart, so
       # table registrations vanished even though data files survived in MinIO.
-      CATALOG_URI: jdbc:sqlite:/home/iceberg/catalog.db
+      # WAL + busy_timeout let readers/writer coexist and wait for the lock, so
+      # heavier commits don't fail with SQLITE_BUSY (prod would use AWS Glue).
+      CATALOG_URI: "jdbc:sqlite:/home/iceberg/catalog.db?journal_mode=WAL&busy_timeout=30000"
     ports:
       - "8181:8181"
     volumes:

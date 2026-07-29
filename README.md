@@ -143,6 +143,9 @@ dbt/                       gold-layer star schema + tests            (Phase 4)
   models/marts/              fact_events + dim_date/actor/geography/cameo_event
   seeds/                     CAMEO root-code lookup
 airflow/dags/              incremental + backfill DAGs               (Phase 5)
+  gdelt_incremental.py       15-min ingest→spark→dbt (idempotent, retries/SLA)
+  gdelt_backfill.py          parameterized window backfill
+  gdelt_lib.py               execs the Spark job in the Spark container
 great_expectations/        data-quality suites                       (Phase 6)
 streaming/                 Kafka producer/consumer                   (Phase 6)
 terraform/                 AWS infrastructure                        (Phase 7)
@@ -164,9 +167,10 @@ tests/                     unit + integration tests
 
 Built in phases — see the roadmap in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), 3 (PySpark
-bronze→silver Iceberg + data-quality gate), and 4 (dbt gold star schema on DuckDB,
-reading the Iceberg silver table straight from the REST catalog) are complete and
-verified against the running stack.
+bronze→silver Iceberg + data-quality gate), 4 (dbt gold star schema on DuckDB,
+reading the Iceberg silver table straight from the REST catalog), and 5 (Airflow
+DAGs wiring ingest→spark→dbt with retries/SLAs, 15-min incremental + backfill) are
+complete and verified against the running stack.
 
 ## License
 
