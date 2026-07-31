@@ -1,6 +1,6 @@
 # GDELT Lakehouse — developer entrypoints
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint test build up down ps logs ingest backfill spark-build spark-test silver dbt-build dbt-docs clean
+.PHONY: help install fmt lint test build up down ps logs ingest backfill spark-build spark-test silver maintain dbt-build dbt-docs clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -50,6 +50,9 @@ spark-test: ## Run the Spark unit tests inside the container
 
 silver: ## Run bronze->silver Iceberg job, e.g. make silver FEED=export
 	docker compose exec -T spark-iceberg bash -c 'spark-submit /home/iceberg/work/jobs/bronze_to_silver.py --feed $(if $(FEED),$(FEED),export)'
+
+maintain: ## Compact + expire snapshots on the silver Iceberg table
+	docker compose exec -T spark-iceberg bash -c 'spark-submit /home/iceberg/work/jobs/maintain_silver.py'
 
 dbt-build: ## Build the gold star schema + run dbt tests (reads silver Iceberg)
 	dbt build --project-dir dbt --profiles-dir dbt

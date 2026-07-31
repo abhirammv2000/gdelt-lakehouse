@@ -145,9 +145,10 @@ dbt/                       gold-layer star schema + tests            (Phase 4)
   models/marts/              fact_events + dim_date/actor/geography/cameo_event
   seeds/                     CAMEO root-code lookup
 airflow/dags/              incremental + backfill DAGs               (Phase 5)
-  gdelt_incremental.py       15-min ingest→spark→dbt (idempotent, retries/SLA)
+  gdelt_incremental.py       15-min ingest→spark→dbt + parallel stream publish
   gdelt_backfill.py          parameterized window backfill
-  gdelt_lib.py               execs the Spark job in the Spark container
+  gdelt_maintenance.py       weekly Iceberg compaction / snapshot expiry
+  gdelt_lib.py               execs Spark jobs in the Spark container
 src/gdelt_pipeline/streaming/  Kafka producer/consumer + DQ gate       (Phase 6)
   producer.py                fan a bronze batch onto gdelt.events.raw
   consumer.py                DQ-gate → dead-letter / alert (consumer group)
@@ -193,8 +194,11 @@ S3 + Glue Iceberg catalog + least-privilege IAM, GitHub Actions CI, and
 OpenLineage → Marquez observability) is complete; the Terraform is
 `fmt`/`validate`-clean and the app switches to AWS via `GDELT_ENV=aws`.
 
-**All 7 phases are done.** See [`docs/RESUME_AND_CONCEPTS.md`](docs/RESUME_AND_CONCEPTS.md)
-for résumé bullets and a concept cheat-sheet.
+**All 7 phases are done.** For the deep dive, see
+[`docs/DESIGN_DECISIONS.md`](docs/DESIGN_DECISIONS.md) (decisions, trade-offs,
+failure modes, scaling, interview Q&A) and
+[`docs/RESUME_AND_CONCEPTS.md`](docs/RESUME_AND_CONCEPTS.md) (résumé bullets +
+concept cheat-sheet).
 
 ## License
 
