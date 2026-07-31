@@ -174,8 +174,8 @@ services:
       - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
     ports:
       - "19092:19092"   # Kafka API (host)
-      - "18081:18081"   # schema registry
-      - "18082:18082"   # pandaproxy
+      - "18081:8081"    # schema registry (listens on 8081 inside)
+      - "18082:8082"    # pandaproxy (listens on 8082 inside)
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -194,6 +194,41 @@ services:
       KAFKA_BROKERS: redpanda:9092
     ports:
       - "8080:8080"
+    networks: [gdelt]
+
+  # Create the stream topics (raw is partitioned so keys distribute), then exit.
+  redpanda-setup:
+    image: redpandadata/redpanda:v24.1.9
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      rpk topic create gdelt.events.raw -p 3 --brokers redpanda:9092 2>/dev/null || true;
+      rpk topic create gdelt.events.dlq -p 1 --brokers redpanda:9092 2>/dev/null || true;
+      rpk topic create gdelt.events.alerts -p 1 --brokers redpanda:9092 2>/dev/null || true;
+      echo 'stream topics ready';
+      "
+    networks: [gdelt]
+
+  # Always-on stream processor: DQ-gate the raw topic, dead-letter + alert.
+  stream-consumer:
+    build:
+      context: .
+      dockerfile: docker/streaming/Dockerfile
+    image: gdelt/streaming:local
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      GDELT_KAFKA_BOOTSTRAP: redpanda:9092
+      GDELT_KAFKA_TOPIC: gdelt.events.raw
+      GDELT_KAFKA_DLQ_TOPIC: gdelt.events.dlq
+      GDELT_KAFKA_ALERTS_TOPIC: gdelt.events.alerts
+      GDELT_KAFKA_CONSUMER_GROUP: gdelt-stream-consumer
+    volumes:
+      - ./src:/opt/gdelt/src
+    restart: unless-stopped
     networks: [gdelt]
 
   # ── Lineage (OpenLineage → Marquez) ─────────────────────────────────────────

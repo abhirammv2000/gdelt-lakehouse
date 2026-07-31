@@ -12,7 +12,7 @@ recency-guarded, re-running a backfill over an already-loaded window is a no-op.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pendulum
 from airflow.decorators import dag, task
@@ -44,8 +44,8 @@ def gdelt_backfill() -> None:
         from gdelt_pipeline.ingestion.service import IngestService
 
         params = get_current_context()["params"]
-        start = datetime.fromisoformat(params["start"]).replace(tzinfo=timezone.utc)
-        end = datetime.fromisoformat(params["end"]).replace(tzinfo=timezone.utc)
+        start = datetime.fromisoformat(params["start"]).replace(tzinfo=UTC)
+        end = datetime.fromisoformat(params["end"]).replace(tzinfo=UTC)
         return IngestService().backfill(start, end).summary
 
     @task

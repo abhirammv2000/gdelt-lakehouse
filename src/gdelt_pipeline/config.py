@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     iceberg_catalog_uri: str = "http://localhost:8181"
     iceberg_warehouse: str = "s3://gdelt-silver/warehouse"
 
+    # Kafka / Redpanda (streaming, Phase 6)
+    kafka_bootstrap: str = "localhost:19092"
+    kafka_topic: str = "gdelt.events.raw"
+    kafka_dlq_topic: str = "gdelt.events.dlq"
+    kafka_alerts_topic: str = "gdelt.events.alerts"
+    kafka_consumer_group: str = "gdelt-stream-consumer"
+
     # HTTP behaviour
     http_timeout_seconds: float = 60.0
     max_retries: int = 5
