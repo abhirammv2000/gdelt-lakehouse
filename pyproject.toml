@@ -72,8 +72,8 @@ disallow_untyped_defs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-# fsspec / s3fs ship no type stubs (no py.typed marker).
-module = ["fsspec", "fsspec.*", "s3fs", "s3fs.*"]
+# These ship no type stubs (no py.typed marker).
+module = ["fsspec", "fsspec.*", "s3fs", "s3fs.*", "confluent_kafka", "confluent_kafka.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

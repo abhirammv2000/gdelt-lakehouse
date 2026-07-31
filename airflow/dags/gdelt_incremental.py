@@ -61,12 +61,22 @@ def gdelt_incremental() -> None:
         ds = get_current_context()["ds"]
         run_bronze_to_silver(f"--feed export --prefix export/dt={ds}/")
 
+    @task
+    def publish_stream() -> dict:
+        """Fan the landed batch onto Kafka for the real-time consumer (parallel path)."""
+        from gdelt_pipeline.streaming.producer import GdeltStreamProducer
+
+        return {"published": GdeltStreamProducer().publish_bronze_latest("export")}
+
     dbt_build = BashOperator(
         task_id="dbt_build",
         bash_command=f"{_DBT} build --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR}",
     )
 
-    ingest() >> bronze_to_silver() >> dbt_build
+    # Batch path (silver -> gold) and streaming path run in parallel after ingest.
+    landed = ingest()
+    landed >> bronze_to_silver() >> dbt_build
+    landed >> publish_stream()
 
 
 gdelt_incremental()

@@ -9,8 +9,10 @@ import typer
 
 from gdelt_pipeline.ingestion.service import IngestService
 from gdelt_pipeline.logging import configure_logging
+from gdelt_pipeline.streaming.cli import stream_app
 
 app = typer.Typer(help="GDELT lakehouse ingestion CLI", no_args_is_help=True)
+app.add_typer(stream_app, name="stream")
 
 _DATE_FORMATS = ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"]
 

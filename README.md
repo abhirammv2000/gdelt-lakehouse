@@ -146,6 +146,9 @@ airflow/dags/              incremental + backfill DAGs               (Phase 5)
   gdelt_incremental.py       15-min ingest→spark→dbt (idempotent, retries/SLA)
   gdelt_backfill.py          parameterized window backfill
   gdelt_lib.py               execs the Spark job in the Spark container
+src/gdelt_pipeline/streaming/  Kafka producer/consumer + DQ gate       (Phase 6)
+  producer.py                fan a bronze batch onto gdelt.events.raw
+  consumer.py                DQ-gate → dead-letter / alert (consumer group)
 great_expectations/        data-quality suites                       (Phase 6)
 streaming/                 Kafka producer/consumer                   (Phase 6)
 terraform/                 AWS infrastructure                        (Phase 7)
@@ -170,7 +173,10 @@ Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), 3 (PySpark
 bronze→silver Iceberg + data-quality gate), 4 (dbt gold star schema on DuckDB,
 reading the Iceberg silver table straight from the REST catalog), and 5 (Airflow
 DAGs wiring ingest→spark→dbt with retries/SLAs, 15-min incremental + backfill) are
-complete and verified against the running stack.
+complete and verified against the running stack. Phase 6 (Kafka/Redpanda streaming
+— a producer fans each batch onto a partitioned topic; an always-on consumer
+applies a per-event DQ gate, dead-letters failures, and alerts on high-impact
+conflict events) is complete and verified live.
 
 ## License
 

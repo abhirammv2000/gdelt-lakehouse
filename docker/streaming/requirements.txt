@@ -1,0 +1,5 @@
+confluent-kafka>=2.5
+pydantic>=2.7
+pydantic-settings>=2.3
+structlog>=24.1
+python-dotenv>=1.0
