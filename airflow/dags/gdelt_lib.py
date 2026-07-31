@@ -15,7 +15,9 @@ import socket
 from airflow.exceptions import AirflowException
 
 _SPARK_SERVICE = "spark-iceberg"
-_SPARK_JOB = "/home/iceberg/work/jobs/bronze_to_silver.py"
+_JOBS_DIR = "/home/iceberg/work/jobs"
+_SILVER_JOB = f"{_JOBS_DIR}/bronze_to_silver.py"
+_MAINTENANCE_JOB = f"{_JOBS_DIR}/maintain_silver.py"
 
 
 def _find_spark_container(client):  # type: ignore[no-untyped-def]
@@ -38,17 +40,25 @@ def _find_spark_container(client):  # type: ignore[no-untyped-def]
     return candidates[0]
 
 
-def run_bronze_to_silver(spark_args: str) -> None:
-    """Exec the bronze->silver job in the Spark container; raise on failure."""
+def run_spark_job(job_path: str, args: str = "") -> None:
+    """Exec ``spark-submit <job_path> <args>`` in the Spark container; raise on failure."""
     import docker
 
     client = docker.from_env()
     container = _find_spark_container(client)
-    cmd = ["bash", "-c", f"spark-submit {_SPARK_JOB} {spark_args}"]
-    print(f"[airflow->spark] exec in {container.name}: spark-submit {_SPARK_JOB} {spark_args}")
+    cmd = ["bash", "-c", f"spark-submit {job_path} {args}".rstrip()]
+    print(f"[airflow->spark] exec in {container.name}: spark-submit {job_path} {args}")
 
     exit_code, output = container.exec_run(cmd, demux=False)
     if output:
         print(output.decode("utf-8", errors="replace"))
     if exit_code != 0:
-        raise AirflowException(f"bronze->silver spark-submit failed (exit {exit_code})")
+        raise AirflowException(f"spark-submit {job_path} failed (exit {exit_code})")
+
+
+def run_bronze_to_silver(spark_args: str) -> None:
+    run_spark_job(_SILVER_JOB, spark_args)
+
+
+def run_maintenance(spark_args: str = "") -> None:
+    run_spark_job(_MAINTENANCE_JOB, spark_args)
