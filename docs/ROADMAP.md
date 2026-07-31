@@ -11,7 +11,7 @@ Built in verifiable increments — each phase runs and is tested before the next
 | **4** | dbt gold layer: star schema (`fact_events` + `dim_actor`/`dim_geography`/`dim_date`/`dim_cameo_event`), tests, docs | ✅ Done |
 | **5** | Airflow DAGs: 15-min incremental + parameterized backfill, wiring ingest→spark→dbt with retries/SLAs | ✅ Done |
 | **6** | Data quality gates + streaming: Kafka/Redpanda producer & consumer for the live event stream | ✅ Done |
-| **7** | Terraform (AWS: S3, Glue/Iceberg, IAM, MWAA/Snowflake), GitHub Actions CI/CD, OpenLineage observability, polished README | ⏳ Next |
+| **7** | Terraform (AWS: S3, Glue/Iceberg, IAM, MWAA/Snowflake), GitHub Actions CI/CD, OpenLineage observability, polished README | ✅ Done |
 
 ## Design principles
 

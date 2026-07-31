@@ -1,5 +1,7 @@
 # GDELT Global Events Lakehouse
 
+[![CI](https://github.com/ABHIRAM1234/gdelt-global-events-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/ABHIRAM1234/gdelt-global-events-lakehouse/actions/workflows/ci.yml)
+
 A production-grade, end-to-end data engineering pipeline that ingests the
 [**GDELT 2.0**](https://www.gdeltproject.org/) global events feed — a new batch of
 world news events published **every 15 minutes** — and turns it into a queryable,
@@ -151,9 +153,19 @@ src/gdelt_pipeline/streaming/  Kafka producer/consumer + DQ gate       (Phase 6)
   consumer.py                DQ-gate → dead-letter / alert (consumer group)
 great_expectations/        data-quality suites                       (Phase 6)
 streaming/                 Kafka producer/consumer                   (Phase 6)
-terraform/                 AWS infrastructure                        (Phase 7)
-.github/workflows/         CI/CD                                     (Phase 7)
+terraform/                 AWS infra: S3 + Glue Iceberg + IAM         (Phase 7)
+.github/workflows/ci.yml   CI: ruff · mypy · pytest · tf validate     (Phase 7)
 tests/                     unit + integration tests
+```
+
+## Observability & lineage
+
+Every Airflow task emits **OpenLineage** events to **Marquez** (http://localhost:3000),
+so each run's jobs and datasets — and their upstream/downstream edges — are
+captured automatically. Query the lineage API, e.g. the jobs in the namespace:
+
+```bash
+curl -s localhost:5000/api/v1/namespaces/gdelt-lakehouse/jobs
 ```
 
 ## Engineering practices on display
@@ -176,7 +188,13 @@ DAGs wiring ingest→spark→dbt with retries/SLAs, 15-min incremental + backfil
 complete and verified against the running stack. Phase 6 (Kafka/Redpanda streaming
 — a producer fans each batch onto a partitioned topic; an always-on consumer
 applies a per-event DQ gate, dead-letters failures, and alerts on high-impact
-conflict events) is complete and verified live.
+conflict events) is complete and verified live. **Phase 7** (Terraform for AWS
+S3 + Glue Iceberg catalog + least-privilege IAM, GitHub Actions CI, and
+OpenLineage → Marquez observability) is complete; the Terraform is
+`fmt`/`validate`-clean and the app switches to AWS via `GDELT_ENV=aws`.
+
+**All 7 phases are done.** See [`docs/RESUME_AND_CONCEPTS.md`](docs/RESUME_AND_CONCEPTS.md)
+for résumé bullets and a concept cheat-sheet.
 
 ## License
 
