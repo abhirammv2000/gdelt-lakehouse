@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and adjust.
+project_name = "gdelt-lakehouse"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# Keep S3 bucket names globally unique (e.g. your 12-digit account id).
+bucket_suffix = "123456789012"
+
+# dev convenience only — lets `terraform destroy` empty the buckets.
+force_destroy_buckets = true

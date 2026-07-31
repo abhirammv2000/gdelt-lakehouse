@@ -1,0 +1,12 @@
+# Copy to backend.tf and fill in to enable remote state with locking.
+# The bucket + DynamoDB table must already exist (bootstrap them once, by hand or
+# a separate root module), because Terraform can't create its own backend.
+terraform {
+  backend "s3" {
+    bucket         = "gdelt-lakehouse-tfstate"
+    key            = "lakehouse/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "gdelt-lakehouse-tflock"
+    encrypt        = true
+  }
+}
