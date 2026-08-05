@@ -161,8 +161,10 @@ debuggable.
 
 ## 6. Honest limitations & what I'd do next
 
-- **Dimensions are Type-1** (`max()` per natural key) — no history. Actors change
-  attributes over time; **SCD Type 2** (dbt snapshots) is the next step for `dim_actor`.
+- **`dim_geography` / `dim_cameo_event` are Type-1** (no history) — a deliberate
+  choice: they're conformed reference data that rarely changes. `dim_actor` **is
+  SCD Type 2** (dbt snapshot), so actor-attribute history is retained; extending
+  SCD2 to the others is straightforward if a use case needs it.
 - **Streaming is at-least-once, not exactly-once.** The DLQ/alerts produce isn't
   transactional with the offset commit, so a crash can re-emit. Kafka transactions
   (EOS) or an idempotent downstream sink would close this.
