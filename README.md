@@ -1,6 +1,6 @@
 # GDELT Global Events Lakehouse
 
-[![CI](https://github.com/ABHIRAM1234/gdelt-global-events-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/ABHIRAM1234/gdelt-global-events-lakehouse/actions/workflows/ci.yml)
+[![CI](https://github.com/abhirammv2000/gdelt-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/abhirammv2000/gdelt-lakehouse/actions/workflows/ci.yml)
 
 A production-grade, end-to-end data engineering pipeline that ingests the
 [**GDELT 2.0**](https://www.gdeltproject.org/) global events feed — a new batch of
