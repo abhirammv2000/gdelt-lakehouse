@@ -1,9 +1,8 @@
-# Design decisions, trade-offs & interview walkthrough
+# Design decisions & trade-offs
 
-A deep tour of *why* the GDELT lakehouse is built the way it is — the decision
-behind each component, the alternatives considered, how it fails and recovers,
-how it scales, and where the honest limits are. Pair with
-[`RESUME_AND_CONCEPTS.md`](RESUME_AND_CONCEPTS.md).
+Why the GDELT lakehouse is built the way it is — the decision behind each
+component, the alternatives considered, how it fails and recovers, how it scales,
+and where the current limits are.
 
 ---
 
@@ -67,25 +66,22 @@ debuggable.
   matching; boto3 is dependency-light and dual-target.
 - **Partitioning:** `days(sql_date)` — matches how the data is queried (by date) and
   keeps partitions a sensible size.
-- **Schema-drift-proof:** every row is validated against the 61-field contract
+- **Schema-drift handling:** every row is validated against the 61-field contract
   (trailing-tab normalized). Non-conformant rows are **quarantined** to a
   `..._rejects` Iceberg table (raw line + actual vs expected count) — never silently
   coerced into good data. If the malformed rate exceeds a threshold (default 5%) the
   job **fails fast** with `SchemaDriftError` (a spike = GDELT changed its layout, so a
   human should look) *before* touching silver. Additive drift is absorbed at the sink
-  via Iceberg schema evolution (`ALTER TABLE ADD COLUMN`, no data rewrite). Verified:
-  a synthetic batch of 10 good + 3 drifted rows quarantined the 3 and either aborted
-  (5% threshold) or wrote only the 10 good rows (60% threshold).
+  via Iceberg schema evolution (`ALTER TABLE ADD COLUMN`, no data rewrite).
 
 ### Data quality — a write-time gate (silver) + warehouse tests (gold)
 - **Silver gate:** a small single-pass expectation engine (not-null, unique, in-set,
   between) with `error`/`warn` severity. Error failures **abort the write** before
-  the MERGE — bad data never reaches silver. *Why not Great Expectations?* GE-on-Spark
-  is heavy and version-fragile; a focused engine is deterministic, one Spark job, and
-  trivially unit-tested. The interface mirrors GE names so it reads familiarly.
-- **Gold tests:** 19 dbt tests (unique / not-null / **relationships** / accepted-
-  values). The relationship tests are the important ones — they prove every fact
-  foreign key resolves to a dimension member.
+  the MERGE — bad data never reaches silver. A focused engine (rather than a heavier
+  framework) is deterministic, runs in one Spark job, and is trivially unit-tested.
+- **Gold tests:** dbt tests (unique / not-null / **relationships** / accepted-values).
+  The relationship tests are the important ones — they prove every fact foreign key
+  resolves to a dimension member.
 
 ### Gold — **dbt** star schema on DuckDB (Snowflake in AWS)
 - **Kimball star:** `fact_events` (grain = event) + conformed dims (date, actor,
@@ -99,6 +95,8 @@ debuggable.
 - **`fact_events` is incremental** (`delete+insert` on `event_key`, high-water-marked
   by `date_added`): each run processes only newly-added events, and re-published
   events upsert. *Why:* a full rebuild every 15 minutes doesn't scale.
+- **`dim_actor` is SCD Type 2** (dbt snapshot) so actor-attribute history is retained;
+  `dim_geography`/`dim_cameo_event` are Type-1 conformed reference data.
 - **CAMEO seed:** conformed reference data (the 20 CAMEO root categories) joins codes
   to human labels — the classic seed/lookup pattern.
 
@@ -120,14 +118,14 @@ debuggable.
   always-on consumer runs a **consumer group** with **manual offset commits**
   (at-least-once), applies the per-event DQ gate, **dead-letters** failures to
   `…dlq`, and routes high-impact conflict events to `…alerts`.
-- **Why a separate path** (not just the batch): demonstrates the streaming
+- **Why a separate path** (not just the batch): exercises the streaming
   fundamentals — partitions (parallelism + per-key order), consumer groups (scale-out
   + rebalancing), offsets (progress), DLQ (quarantine), content routing.
 - **Trade-off:** JSON on the wire (readable, dependency-light). Production would use
   **Avro + Schema Registry** for enforced, evolvable contracts (Redpanda ships a
   registry; the port is wired).
 
-### IaC / CI / lineage (Phase 7)
+### IaC / CI / lineage
 - **Terraform:** versioned + encrypted S3 buckets (public access blocked, lifecycle
   expiry), a **Glue** database as the production Iceberg catalog, **least-privilege
   IAM** scoped to exactly those buckets + DB. `fmt`/`validate`-clean.
@@ -170,12 +168,11 @@ debuggable.
 
 ---
 
-## 6. Honest limitations & what I'd do next
+## 6. Limitations & future work
 
 - **`dim_geography` / `dim_cameo_event` are Type-1** (no history) — a deliberate
-  choice: they're conformed reference data that rarely changes. `dim_actor` **is
-  SCD Type 2** (dbt snapshot), so actor-attribute history is retained; extending
-  SCD2 to the others is straightforward if a use case needs it.
+  choice: they're conformed reference data that rarely changes. `dim_actor` is
+  SCD Type 2; extending SCD2 to the others is straightforward if a use case needs it.
 - **Streaming is at-least-once, not exactly-once.** The DLQ/alerts produce isn't
   transactional with the offset commit, so a crash can re-emit. Kafka transactions
   (EOS) or an idempotent downstream sink would close this.
@@ -185,34 +182,3 @@ debuggable.
   OpenLineage Spark listener + `openlineage-dbt`.
 - **No pipeline metrics/alerting** beyond Airflow SLAs — a Prometheus/Grafana or
   Airflow-callback layer would add operational observability.
-- **JSON streaming contract** — Avro + Schema Registry for real contracts.
-
----
-
-## 7. Likely interview questions (with the short answers)
-
-- **"How is this idempotent end-to-end?"** Ingest: checkpoint + existence check.
-  Silver: recency-guarded Iceberg MERGE. Gold: incremental `delete+insert` on the
-  key. Stream: commit offsets after processing. Re-running any stage converges to
-  the same state.
-- **"Why Iceberg over Delta/Hudi/plain Parquet?"** ACID + snapshots + hidden
-  partitioning + schema evolution over object storage, engine-agnostic (Spark writes,
-  DuckDB/Trino/Snowflake read the same table via a catalog). Delta/Hudi are valid
-  peers; Iceberg's catalog story (Glue/REST) fit the "two targets" goal.
-- **"How does dbt read an Iceberg table?"** DuckDB `iceberg`+`httpfs` extensions
-  attach the REST/Glue catalog; the silver table *is* the dbt source — no copy.
-- **"What's your partitioning / small-files strategy?"** Partition by `days(sql_date)`;
-  copy-on-write MERGE keeps partitions compact; a scheduled maintenance DAG compacts
-  and expires snapshots.
-- **"How do you survive schema drift / malformed exports?"** A field-count contract
-  (61) classifies every row; malformed rows are quarantined to a `_rejects` table,
-  not silently coerced; a malformed-rate spike fails the job fast (drift alarm); and
-  additive drift is absorbed by Iceberg schema evolution. Decoding/casting is
-  null-safe, so bad values never crash the parse.
-- **"At-least-once vs exactly-once?"** Manual offset commit after processing =
-  at-least-once; I'd reach for Kafka transactions or idempotent sinks for EOS.
-- **"How would this run in the cloud?"** `GDELT_ENV=aws`: S3 + Glue catalog +
-  Snowflake, Terraform-provisioned, orchestrated by MWAA, Spark on EMR/K8s — the
-  app code is unchanged; only operators and endpoints swap.
-- **"What would you change with more time?"** SCD2 dims, exactly-once streaming,
-  Snowflake gold, column-level lineage, and pipeline metrics (see §6).
