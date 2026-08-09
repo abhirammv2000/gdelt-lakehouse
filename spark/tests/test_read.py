@@ -1,4 +1,4 @@
-"""Unit tests for zip parsing (pure Python, no Spark needed)."""
+"""Unit tests for zip parsing + schema-contract classification (pure Python)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,11 @@ import io
 import zipfile
 
 from gdelt_spark.read import records_from_zip
+
+# Tuple layout: 61 fields, then _source_file, _field_count, _raw_line.
+_SRC = 61
+_FIELD_COUNT = 62
+_RAW_LINE = 63
 
 
 def _make_zip(lines: list[str]) -> bytes:
@@ -15,28 +20,41 @@ def _make_zip(lines: list[str]) -> bytes:
     return buf.getvalue()
 
 
-def test_full_row_maps_to_61_fields_plus_source() -> None:
-    full = "\t".join(str(i) for i in range(61))
-    (record,) = records_from_zip("20260724.export.CSV.zip", _make_zip([full]))
-    assert len(record) == 62  # 61 columns + _source_file
+def _row(n: int) -> str:
+    return "\t".join(str(i) for i in range(n))
+
+
+def test_conformant_row_maps_to_61_fields_and_reports_count() -> None:
+    (record,) = records_from_zip("20260724.export.CSV.zip", _make_zip([_row(61)]))
+    assert len(record) == 64  # 61 columns + source + field_count + raw_line
     assert record[0] == "0"
     assert record[60] == "60"
-    assert record[61] == "20260724.export.CSV.zip"
+    assert record[_SRC] == "20260724.export.CSV.zip"
+    assert record[_FIELD_COUNT] == 61  # conformant
+    assert record[_RAW_LINE] == _row(61)
 
 
-def test_blank_lines_skipped_and_short_rows_padded() -> None:
-    full = "\t".join(str(i) for i in range(61))
-    short = "a\tb\tc"
-    records = list(records_from_zip("f.zip", _make_zip([full, "", short, "   "])))
+def test_blank_lines_skipped_and_short_rows_flagged() -> None:
+    records = list(records_from_zip("f.zip", _make_zip([_row(61), "", "a\tb\tc", "   "])))
     assert len(records) == 2  # blank / whitespace-only lines dropped
-    padded = records[1]
-    assert padded[:3] == ("a", "b", "c")
-    assert padded[3] is None  # short row padded with NULLs
-    assert padded[61] == "f.zip"
+    short = records[1]
+    assert short[:3] == ("a", "b", "c")
+    assert short[3] is None  # padded so the tuple shape stays fixed
+    assert short[_FIELD_COUNT] == 3  # but the real count is preserved -> non-conformant
 
 
-def test_trailing_tab_does_not_create_62nd_column() -> None:
-    row_with_trailing_tab = "\t".join(str(i) for i in range(61)) + "\t"
-    (record,) = records_from_zip("f.zip", _make_zip([row_with_trailing_tab]))
-    assert len(record) == 62
+def test_trailing_tab_is_normalized_to_conformant() -> None:
+    (record,) = records_from_zip("f.zip", _make_zip([_row(61) + "\t"]))
     assert record[60] == "60"
+    assert record[_FIELD_COUNT] == 61  # lone trailing empty field dropped
+
+
+def test_extra_columns_flagged_as_non_conformant() -> None:
+    # Schema drift: GDELT adds a real 62nd column.
+    (record,) = records_from_zip("f.zip", _make_zip([_row(62)]))
+    assert record[_FIELD_COUNT] == 62  # detected, not silently truncated-away
+
+
+def test_missing_column_flagged_as_non_conformant() -> None:
+    (record,) = records_from_zip("f.zip", _make_zip([_row(60)]))
+    assert record[_FIELD_COUNT] == 60

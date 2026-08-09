@@ -18,11 +18,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
-_N_COLS = len(EVENT_COLUMN_NAMES)  # 61
+_N_COLS = len(EVENT_COLUMN_NAMES)  # 61 — the schema contract
 
 
 @dataclass(frozen=True)
@@ -50,13 +50,19 @@ class S3Location:
 def _raw_schema() -> StructType:
     fields = [StructField(name, StringType(), nullable=True) for name in EVENT_COLUMN_NAMES]
     fields.append(StructField("_source_file", StringType(), nullable=True))
+    # Schema-drift signal: the actual (contract-normalized) field count of the row,
+    # and the raw line kept verbatim so non-conformant rows can be quarantined.
+    fields.append(StructField("_field_count", IntegerType(), nullable=False))
+    fields.append(StructField("_raw_line", StringType(), nullable=True))
     return StructType(fields)
 
 
-def records_from_zip(source_file: str, content: bytes) -> Iterator[tuple[str | None, ...]]:
-    """Yield one 62-tuple (61 fields + source filename) per data row in the zip.
+def records_from_zip(source_file: str, content: bytes) -> Iterator[tuple[object, ...]]:
+    """Yield one row-tuple per data line: 61 fields + source, field count, raw line.
 
-    Short rows are padded, long rows truncated, so every tuple matches the schema.
+    Fields are padded/truncated to 61 so the good path keeps a fixed schema, but
+    ``_field_count`` carries the *actual* count (after normalizing the historical
+    single trailing-tab quirk) so the job can detect and quarantine drifted rows.
     Decoding uses UTF-8 with replacement to survive GDELT's encoding quirks.
     """
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
@@ -65,11 +71,16 @@ def records_from_zip(source_file: str, content: bytes) -> Iterator[tuple[str | N
             return
         text = zf.read(names[0]).decode("utf-8", errors="replace")
     for line in text.split("\n"):
-        if not line.strip():
+        stripped = line.rstrip("\r")
+        if not stripped.strip():
             continue
-        fields: list[str | None] = line.rstrip("\r").split("\t")  # type: ignore[assignment]
-        fields = (fields + [None] * _N_COLS)[:_N_COLS]
-        yield (*fields, source_file)
+        parts = stripped.split("\t")
+        # Normalize the historical trailing-tab quirk: a lone empty trailing field.
+        if len(parts) == _N_COLS + 1 and parts[-1] == "":
+            parts = parts[:-1]
+        field_count = len(parts)
+        fields: list[str | None] = (parts + [None] * _N_COLS)[:_N_COLS]  # type: ignore[assignment]
+        yield (*fields, source_file, field_count, stripped)
 
 
 def list_bronze_keys(loc: S3Location, prefix: str) -> list[str]:

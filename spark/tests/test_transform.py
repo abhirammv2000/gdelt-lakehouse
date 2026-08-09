@@ -13,7 +13,8 @@ from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
 def _raw_row(source: str = "f.zip", **overrides: str) -> tuple:
     values = [str(overrides.get(name, "")) for name in EVENT_COLUMN_NAMES]
-    return (*values, source)
+    # match _raw_schema: 61 fields + _source_file, _field_count, _raw_line
+    return (*values, source, len(EVENT_COLUMN_NAMES), "\t".join(values))
 
 
 def _raw_df(spark: SparkSession, rows: list[tuple]):

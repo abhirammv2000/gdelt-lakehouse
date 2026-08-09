@@ -8,6 +8,7 @@ bronze data is a no-op — the core idempotency guarantee of the pipeline.
 from __future__ import annotations
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
 
 from gdelt_pipeline.schema.events import EVENT_COLUMNS
 from gdelt_spark.transform import EVENT_KEY, RECENCY_COLUMN, SPARK_TYPES
@@ -49,3 +50,35 @@ def write_silver(spark: SparkSession, df: DataFrame, table: str) -> None:
     view = "gdelt_silver_updates"
     df.createOrReplaceTempView(view)
     merge_silver(spark, table, view)
+
+
+def rejects_table_name(silver_table: str) -> str:
+    """Quarantine table alongside the silver table, e.g. ...events -> ...events_rejects."""
+    return f"{silver_table}_rejects"
+
+
+def ensure_rejects_table(spark: SparkSession, table: str) -> None:
+    namespace = table.rsplit(".", 1)[0]
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
+    spark.sql(
+        f"CREATE TABLE IF NOT EXISTS {table} (\n"
+        "  _raw_line string,\n"
+        "  _field_count int,\n"
+        "  _expected_count int,\n"
+        "  _source_file string,\n"
+        "  _quarantined_at timestamp\n"
+        ") USING iceberg TBLPROPERTIES ('format-version'='2')"
+    )
+
+
+def write_rejects(spark: SparkSession, df: DataFrame, table: str, expected_count: int) -> None:
+    """Append non-conformant rows to the quarantine table for inspection/replay."""
+    ensure_rejects_table(spark, table)
+    (
+        df.select("_raw_line", "_field_count", "_source_file")
+        .withColumn("_expected_count", F.lit(expected_count))
+        .withColumn("_quarantined_at", F.current_timestamp())
+        .select("_raw_line", "_field_count", "_expected_count", "_source_file", "_quarantined_at")
+        .writeTo(table)
+        .append()
+    )

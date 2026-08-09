@@ -67,6 +67,15 @@ debuggable.
   matching; boto3 is dependency-light and dual-target.
 - **Partitioning:** `days(sql_date)` — matches how the data is queried (by date) and
   keeps partitions a sensible size.
+- **Schema-drift-proof:** every row is validated against the 61-field contract
+  (trailing-tab normalized). Non-conformant rows are **quarantined** to a
+  `..._rejects` Iceberg table (raw line + actual vs expected count) — never silently
+  coerced into good data. If the malformed rate exceeds a threshold (default 5%) the
+  job **fails fast** with `SchemaDriftError` (a spike = GDELT changed its layout, so a
+  human should look) *before* touching silver. Additive drift is absorbed at the sink
+  via Iceberg schema evolution (`ALTER TABLE ADD COLUMN`, no data rewrite). Verified:
+  a synthetic batch of 10 good + 3 drifted rows quarantined the 3 and either aborted
+  (5% threshold) or wrote only the 10 good rows (60% threshold).
 
 ### Data quality — a write-time gate (silver) + warehouse tests (gold)
 - **Silver gate:** a small single-pass expectation engine (not-null, unique, in-set,
@@ -137,6 +146,8 @@ debuggable.
 | GDELT returns a corrupt file | MD5 mismatch raises; that file is recorded failed, batch continues |
 | Silver job re-run on same data | Recency-guarded MERGE → no-op (idempotent) |
 | Bad data in a batch | Silver DQ gate aborts the write before MERGE; stream DLQs the event |
+| A few malformed rows | Quarantined to the `_rejects` table by the field-count contract; good rows still load |
+| GDELT changes its column layout | Malformed rate spikes → `SchemaDriftError` aborts before write; additive change absorbed via Iceberg `ADD COLUMN` |
 | Catalog restart | Persistent SQLite-on-volume (WAL + busy_timeout) survives; prod = Glue |
 | Spark task fails in a DAG | Airflow retries with backoff; MERGE idempotency makes retries safe |
 | Consumer crashes | Offsets committed only after handling → at-least-once redelivery |
@@ -193,6 +204,11 @@ debuggable.
 - **"What's your partitioning / small-files strategy?"** Partition by `days(sql_date)`;
   copy-on-write MERGE keeps partitions compact; a scheduled maintenance DAG compacts
   and expires snapshots.
+- **"How do you survive schema drift / malformed exports?"** A field-count contract
+  (61) classifies every row; malformed rows are quarantined to a `_rejects` table,
+  not silently coerced; a malformed-rate spike fails the job fast (drift alarm); and
+  additive drift is absorbed by Iceberg schema evolution. Decoding/casting is
+  null-safe, so bad values never crash the parse.
 - **"At-least-once vs exactly-once?"** Manual offset commit after processing =
   at-least-once; I'd reach for Kafka transactions or idempotent sinks for EOS.
 - **"How would this run in the cloud?"** `GDELT_ENV=aws`: S3 + Glue catalog +

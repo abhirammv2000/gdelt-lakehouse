@@ -174,6 +174,9 @@ curl -s localhost:5000/api/v1/namespaces/gdelt-lakehouse/jobs
 - **Idempotency** — checkpointing + object-existence checks make every DAG run
   safe to retry; re-ingesting a batch is a no-op (proven by test).
 - **Data integrity** — MD5 verification on every downloaded file.
+- **Schema-drift-proof** — a 61-field contract quarantines non-conformant rows to a
+  rejects table, fails fast on a malformed-rate spike, and absorbs additive drift via
+  Iceberg schema evolution (never silently corrupts good data).
 - **Medallion architecture** — bronze (raw) → silver (typed/clean Iceberg) → gold (modeled).
 - **Testing** — unit tests with mocked HTTP (`respx`) and mocked S3 (`moto`); dbt tests; DQ suites.
 - **Type safety & linting** — `ruff`, `mypy --strict`, `sqlfluff`, enforced via `pre-commit` and CI.
