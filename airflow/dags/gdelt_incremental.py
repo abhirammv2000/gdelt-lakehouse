@@ -1,4 +1,4 @@
-"""Incremental GDELT pipeline — runs every 15 minutes.
+"""Incremental GDELT pipeline - runs every 15 minutes.
 
 Wires the medallion end to end for the current batch:
 
@@ -6,7 +6,7 @@ Wires the medallion end to end for the current batch:
                                  ->  dbt_build (gold star schema + tests)
 
 Design notes:
-- ``catchup=False`` + ``max_active_runs=1`` — GDELT is a live feed; we always want
+- ``catchup=False`` + ``max_active_runs=1`` - GDELT is a live feed; we always want
   the latest batch, never a backlog of overlapping runs.
 - Every stage is idempotent (checkpointed ingest, recency-guarded Iceberg MERGE,
   dbt rebuild), so the automatic retries below are always safe.

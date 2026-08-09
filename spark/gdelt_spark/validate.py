@@ -1,13 +1,12 @@
-"""A small, single-pass data-quality gate for the silver frame.
+"""A small data-quality gate for the silver frame.
 
-Expectations mirror Great Expectations' vocabulary (``not_null``, ``unique``,
-``in_set``, ``between``) but evaluate as one Spark aggregation, so the whole suite
-costs a single job rather than one scan per rule. ``error`` failures abort the
-pipeline; ``warn`` failures are logged and let the run continue.
+Each check (not_null, unique, in_set, between) runs inside one Spark aggregation,
+so the whole set is a single pass over the data rather than one scan per check. An
+``error`` failure stops the pipeline; a ``warn`` failure is logged and the run
+continues.
 
-This is intentionally a focused, deterministic engine rather than a full GE
-integration — it needs no extra services, is trivially unit-tested, and keeps the
-DQ contract in code next to the transform it guards.
+It is a small hand-written engine rather than a bigger framework: nothing extra to
+run, and easy to test.
 """
 
 from __future__ import annotations

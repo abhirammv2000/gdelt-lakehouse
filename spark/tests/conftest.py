@@ -1,7 +1,7 @@
 """Shared fixtures for the Spark unit tests.
 
 These run inside the spark-iceberg container (`make spark-test`) against a local
-SparkSession — no S3 or Iceberg catalog required, so they're fast and hermetic.
+SparkSession, with no S3 or Iceberg catalog needed, so they're fast and offline.
 """
 
 from __future__ import annotations

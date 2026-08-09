@@ -7,7 +7,7 @@ reader can't see inside a zip, and this image has no ``s3a`` filesystem, so we:
   2. parallelize the keys and fetch+unzip each on the executors,
   3. build a DataFrame of 61 string columns (+ ``_source_file``).
 
-Casting/cleaning happens later in ``transform.py`` — bronze stays faithful.
+Casting/cleaning happens later in ``transform.py``; bronze stays an unmodified copy.
 """
 
 from __future__ import annotations
@@ -22,12 +22,12 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
-_N_COLS = len(EVENT_COLUMN_NAMES)  # 61 — the schema contract
+_N_COLS = len(EVENT_COLUMN_NAMES)  # 61 - the schema contract
 
 
 @dataclass(frozen=True)
 class S3Location:
-    """Everything an executor needs to pull an object — must stay picklable."""
+    """Everything an executor needs to pull an object - must stay picklable."""
 
     bucket: str
     endpoint_url: str | None = None

@@ -67,11 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     raw = read_bronze(spark, loc, prefix).cache()
     total = raw.count()
     if total == 0:
-        print("[bronze->silver] no bronze files found — nothing to do")
+        print("[bronze->silver] no bronze files found - nothing to do")
         spark.stop()
         return 0
 
-    # ── Schema-contract validation (drift detection) ────────────────────────────
+    # -- Schema-contract validation (drift detection) ----------------------------
     # A conformant row has exactly EXPECTED_COLUMN_COUNT fields. Non-conformant
     # rows are quarantined (never silently coerced into good data); a spike in the
     # malformed rate means GDELT changed its layout, so we abort before writing.
@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if rate > args.max_malformed_rate:
         raise SchemaDriftError(
-            f"malformed rate {rate:.2%} exceeds threshold {args.max_malformed_rate:.2%} — "
+            f"malformed rate {rate:.2%} exceeds threshold {args.max_malformed_rate:.2%} - "
             f"likely GDELT schema drift (field-count distribution: {dist}). Aborting before write."
         )
 

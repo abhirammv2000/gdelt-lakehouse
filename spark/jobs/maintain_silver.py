@@ -2,13 +2,13 @@
 
 A MERGE-heavy table accumulates many small data files (one write per run, per
 partition) and a growing snapshot log. Left alone, reads get slower and catalog
-metadata bloats. This job runs Iceberg's maintenance procedures — the operational
+metadata bloats. This job runs Iceberg's maintenance procedures - the operational
 upkeep a real lakehouse schedules (e.g. weekly):
 
-  * rewrite_data_files  — bin-pack small files into larger ones (compaction)
-  * rewrite_manifests   — keep the manifest list tidy
-  * expire_snapshots    — drop old snapshots (bounds time-travel + metadata size)
-  * remove_orphan_files — delete files no live snapshot references
+  * rewrite_data_files  - bin-pack small files into larger ones (compaction)
+  * rewrite_manifests   - keep the manifest list tidy
+  * expire_snapshots    - drop old snapshots (bounds time-travel + metadata size)
+  * remove_orphan_files - delete files no live snapshot references
 
     spark-submit maintain_silver.py --table lakehouse.gdelt.events --retain-last 5
 """

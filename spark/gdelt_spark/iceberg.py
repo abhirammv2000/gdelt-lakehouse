@@ -2,7 +2,7 @@
 
 The MERGE keys on ``global_event_id`` and only overwrites when the incoming
 record is at least as recent as the stored one, so re-running the job on the same
-bronze data is a no-op — the core idempotency guarantee of the pipeline.
+bronze data is a no-op - the core idempotency guarantee of the pipeline.
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ resource "aws_s3_bucket" "layer" {
   }
 }
 
-# Keep object history — supports the Iceberg time-travel / reproducibility story.
+# Keep object history - supports the Iceberg time-travel / reproducibility story.
 resource "aws_s3_bucket_versioning" "layer" {
   for_each = aws_s3_bucket.layer
 
@@ -43,7 +43,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "layer" {
   }
 }
 
-# These are private data lakes — block all public access.
+# These are private data lakes - block all public access.
 resource "aws_s3_bucket_public_access_block" "layer" {
   for_each = aws_s3_bucket.layer
 

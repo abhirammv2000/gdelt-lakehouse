@@ -1,7 +1,7 @@
 """Build a SparkSession wired to the Iceberg REST catalog on MinIO/S3.
 
 Only Iceberg's ``S3FileIO`` is used for table data (shipped in the base image's
-iceberg-aws-bundle) — no ``hadoop-aws``/``s3a`` filesystem is required, because
+iceberg-aws-bundle) - no ``hadoop-aws``/``s3a`` filesystem is required, because
 bronze objects are fetched with boto3 (see ``read.py``), not through Spark's FS.
 """
 

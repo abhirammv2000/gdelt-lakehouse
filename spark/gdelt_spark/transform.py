@@ -1,6 +1,6 @@
 """Cast, clean, and de-duplicate raw bronze rows into the silver contract.
 
-Driven entirely by ``EVENT_COLUMNS`` so the schema has a single source of truth.
+Uses ``EVENT_COLUMNS`` as the column list, so it is defined in one place.
 Output columns: the 61 typed event columns, then ``_source_file`` and
 ``_ingested_at``. Order matches :func:`gdelt_spark.iceberg.silver_ddl` so the
 Iceberg ``MERGE ... INSERT *`` lines up by position and name.
@@ -14,7 +14,7 @@ from pyspark.sql.window import Window
 
 from gdelt_pipeline.schema.events import EVENT_COLUMNS
 
-# GDELT's authoritative primary key; also the dedup key.
+# GDELT's primary key, and the column we dedup on.
 EVENT_KEY = "global_event_id"
 # When the same event id recurs across batches, the newest record wins.
 RECENCY_COLUMN = "date_added"
@@ -51,7 +51,7 @@ def to_silver(raw: DataFrame) -> DataFrame:
     """Type + clean + dedup a raw bronze frame into the silver frame."""
     typed = raw.select(*[_cast_expr(n, s) for n, s in EVENT_COLUMNS], F.col("_source_file"))
 
-    # A row without the primary key can't be modeled or merged — drop it.
+    # A row without the primary key can't be modeled or merged - drop it.
     typed = typed.filter(F.col(EVENT_KEY).isNotNull())
 
     # Keep the most-recently-added record per event id (idempotent across reruns).

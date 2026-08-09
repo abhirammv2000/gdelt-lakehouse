@@ -2,7 +2,7 @@
 
 The ingest job records the last GDELT timestamp it successfully landed, per feed,
 in a small JSON object next to the data. Re-running is therefore a no-op for
-already-ingested batches — the property that makes the 15-minute Airflow schedule
+already-ingested batches - the property that makes the 15-minute Airflow schedule
 safe to retry.
 """
 

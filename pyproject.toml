@@ -1,7 +1,7 @@
 [project]
 name = "gdelt-lakehouse"
 version = "0.1.0"
-description = "Production-grade lakehouse pipeline for the GDELT 2.0 global events feed"
+description = "Lakehouse pipeline for the GDELT 2.0 global events feed"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

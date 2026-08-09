@@ -1,4 +1,4 @@
-"""Parameterized GDELT backfill — triggered manually for a historical window.
+"""Parameterized GDELT backfill - triggered manually for a historical window.
 
 Same medallion wiring as the incremental DAG, but the ingest step pulls every
 15-minute file whose timestamp falls in ``[start, end)`` from GDELT's master file

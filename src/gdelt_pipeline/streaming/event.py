@@ -1,7 +1,7 @@
-"""The streaming event contract: a curated, typed subset of the 61 GDELT columns.
+"""The streaming event: a small typed subset of the 61 GDELT columns.
 
-Kept small and JSON-serializable so the stream is easy to reason about. Field
-order/indexing is derived from the authoritative schema so the two never drift.
+Kept small and JSON-serializable so the stream is easy to work with. Field order is
+taken from the schema module so the two stay in sync.
 """
 
 from __future__ import annotations

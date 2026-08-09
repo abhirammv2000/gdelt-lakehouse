@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   quality:
-    name: lint · types · tests
+    name: lint , types , tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

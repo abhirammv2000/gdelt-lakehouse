@@ -3,7 +3,7 @@
 The 15-minute MERGE pipeline steadily adds small data files and snapshots. This
 DAG runs Iceberg's maintenance procedures (compaction, manifest + snapshot
 cleanup, orphan removal) on a low-traffic weekly slot so reads stay fast and the
-catalog metadata stays small — separated from the hot path on purpose.
+catalog metadata stays small - separated from the hot path on purpose.
 """
 
 from __future__ import annotations

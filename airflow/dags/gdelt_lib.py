@@ -4,7 +4,7 @@ The bronze->silver step runs PySpark, which lives in its own container. Airflow
 reaches it over the mounted Docker socket and execs ``spark-submit`` in the
 already-running ``spark-iceberg`` service (its code mounts, jars, and network are
 already correct). In a cloud deployment this single function would be swapped for
-a SparkKubernetesOperator / EmrAddStepsOperator / DatabricksSubmitRunOperator —
+a SparkKubernetesOperator / EmrAddStepsOperator / DatabricksSubmitRunOperator -
 the DAGs wouldn't change.
 """
 
