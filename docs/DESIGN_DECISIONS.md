@@ -1,184 +1,171 @@
-# Design decisions & trade-offs
+# Design decisions and trade-offs
 
-Why the GDELT lakehouse is built the way it is — the decision behind each
-component, the alternatives considered, how it fails and recovers, how it scales,
-and where the current limits are.
+Notes on why the project is built the way it is: the main choices, what I
+considered instead, how it fails and recovers, how it would scale, and what it
+does not do yet.
 
----
+## 1. The dataset
 
-## 1. The dataset, and why it's a good choice
+GDELT 2.0 publishes a batch of world-news events every 15 minutes. The files are
+tab-delimited, have no header, and carry 61 fixed columns, with plenty of nulls,
+CAMEO codes, and encoding quirks. It is a good dataset to build on because it is
+messy and always arriving, so it needs real incremental ingestion, idempotency,
+schema handling, data quality, and streaming rather than a one-off load. One row
+is one event.
 
-GDELT 2.0 publishes a batch of world-news events **every 15 minutes**: tab-
-delimited, **no header, 61 columns**, CAMEO codes, nulls, encoding quirks,
-continuously arriving. That's deliberately unlike the clean/static "taxi" tutorial
-dataset — it forces real incremental ingestion, idempotency, schema handling, data
-quality, and streaming. Grain: one row = one geopolitical event.
+## 2. Architecture
 
----
+Ingest (Python) -> bronze (raw zips in S3/MinIO) -> PySpark -> silver (Iceberg,
+typed and deduped) -> dbt -> gold (star schema in DuckDB/Snowflake). Airflow runs
+the schedule, a Kafka/Redpanda path runs off ingestion for the streaming side, and
+Marquez collects lineage. The AWS target is a single `GDELT_ENV` flag away.
 
-## 2. Architecture in one breath
+The layers follow the medallion pattern. Bronze is the raw feed, unchanged. Silver
+is typed, cleaned, and deduped. Gold is modeled for querying. Keeping them separate
+means I only reprocess downstream of wherever data changed, and each layer can be
+inspected on its own.
 
-`ingest (Python) → bronze (raw zips, S3/MinIO) → PySpark → silver (Iceberg, typed
-& deduped) → dbt → gold (star schema, DuckDB/Snowflake)`, orchestrated by Airflow,
-with a **parallel streaming path** (Kafka/Redpanda) off ingestion, lineage to
-Marquez, and an AWS/Terraform target selected by one `GDELT_ENV` flag.
-
-**Medallion** is the backbone: each layer has a contract (bronze = faithful raw,
-silver = typed/clean/conformed, gold = modeled for consumption). You only
-reprocess *downstream* of where data changed, and each layer is independently
-debuggable.
-
----
-
-## 3. Decisions & trade-offs, component by component
+## 3. Component choices
 
 ### Ingestion (Python, httpx, tenacity)
-- **Idempotent by construction.** Before landing a file we check object existence;
-  after landing we advance a per-feed checkpoint (last timestamp). Re-running is a
-  no-op (proven by test). *Why:* the 15-min schedule must be safe to retry.
-- **Integrity:** MD5 from GDELT's index is verified on every download.
-- **Failure isolation:** one bad file is recorded and skipped, not fatal to the batch.
-- **Trade-off:** backfill reads GDELT's full `masterfilelist.txt` (huge) and filters
-  in Python — simple but slow (~tens of minutes). A production system would cache /
-  index that list or list by date prefix.
+- Idempotent: before landing a file it checks whether the object already exists,
+  and after landing it records the last timestamp per feed. Re-running does
+  nothing, which matters because the 15-minute schedule needs to be safe to retry.
+- MD5 from GDELT's index is checked on every download.
+- One bad file is logged and skipped instead of failing the whole batch.
+- Trade-off: backfill reads GDELT's full `masterfilelist.txt` and filters it in
+  Python, which is simple but slow (tens of minutes). A bigger system would cache
+  that list or list by date prefix.
 
-### Object storage — S3 with a MinIO local stand-in
-- One storage abstraction (`fsspec`/`s3fs`); the *same code* talks to MinIO locally
-  and S3 in AWS. The only difference is an endpoint + credentials, resolved from env
-  (`GDELT_ENV`). *Alternative:* separate code paths — rejected; env-switching is the
-  whole "two targets, one codebase" story.
+### Object storage: S3, with MinIO locally
+One storage layer (`fsspec`/`s3fs`) talks to MinIO locally and S3 on AWS. The only
+difference is the endpoint and credentials, read from the environment. I did not
+want two code paths for storage, and this keeps the local and AWS runs identical.
 
-### Bronze → silver — **PySpark + Apache Iceberg**
-- **Why Iceberg (vs Hive tables / raw Parquet):** ACID commits, snapshots
-  (time-travel + rollback), hidden partitioning, and schema evolution over object
-  storage. Raw Parquet gives none of the transactional guarantees; Hive tables have
-  the small-files/partition-listing problems Iceberg fixes.
-- **Idempotent MERGE:** `MERGE INTO … WHEN MATCHED AND source.date_added >=
-  target.date_added THEN UPDATE … WHEN NOT MATCHED THEN INSERT`. Re-running the same
-  bronze is a no-op (identical rows re-MERGE'd); a re-published event (newer
-  `date_added`) upserts. This is the core correctness property.
-- **Dedup:** a window over `global_event_id` ordered by `date_added desc` keeps the
-  most-recent record before the MERGE (GDELT re-publishes events across batches).
-- **Reading zipped CSV without S3A:** the image ships Iceberg's `S3FileIO` (for table
-  data) but **no `hadoop-aws`/`s3a` filesystem**, so Spark can't read `s3a://…zip`.
-  We list + fetch the objects with **boto3** on the executors and unzip in Python.
-  *Alternative:* add the hadoop-aws + matching aws-sdk jars — brittle version
-  matching; boto3 is dependency-light and dual-target.
-- **Partitioning:** `days(sql_date)` — matches how the data is queried (by date) and
-  keeps partitions a sensible size.
-- **Schema-drift handling:** every row is validated against the 61-field contract
-  (trailing-tab normalized). Non-conformant rows are **quarantined** to a
-  `..._rejects` Iceberg table (raw line + actual vs expected count) — never silently
-  coerced into good data. If the malformed rate exceeds a threshold (default 5%) the
-  job **fails fast** with `SchemaDriftError` (a spike = GDELT changed its layout, so a
-  human should look) *before* touching silver. Additive drift is absorbed at the sink
-  via Iceberg schema evolution (`ALTER TABLE ADD COLUMN`, no data rewrite).
+### Bronze to silver: PySpark and Apache Iceberg
+- Why Iceberg over Hive tables or plain Parquet: it gives ACID commits, snapshots
+  (time travel and rollback), hidden partitioning, and schema evolution on top of
+  object storage. Plain Parquet has no transactions, and Hive tables have the
+  small-file and partition-listing problems Iceberg avoids.
+- Idempotent MERGE: `MERGE INTO ... WHEN MATCHED AND source.date_added >=
+  target.date_added THEN UPDATE ... WHEN NOT MATCHED THEN INSERT`. Running the same
+  bronze again changes nothing; a re-published event with a newer `date_added`
+  overwrites the old one. This is the main correctness property.
+- Dedup: a window over `global_event_id` ordered by `date_added` descending keeps
+  the newest record before the MERGE, since GDELT re-publishes events across batches.
+- Reading zipped CSV without S3A: the Spark image has Iceberg's `S3FileIO` for
+  table data but no `hadoop-aws`/`s3a` filesystem, so Spark can't read `s3a://...zip`
+  directly. I list and fetch the objects with boto3 on the executors and unzip in
+  Python. The alternative, adding the hadoop-aws and matching aws-sdk jars, means
+  fragile version matching; boto3 is lighter and behaves the same locally and on AWS.
+- Partitioning by `days(sql_date)`, because that is how the data gets queried and
+  it keeps partitions a reasonable size.
+- Schema-drift handling: each row is checked against the 61-field contract (a lone
+  trailing tab is normalized first). Rows that don't match go to a `..._rejects`
+  table with the raw line and the field count, so they are never padded or shifted
+  into the good data. If too many rows fail (default 5%), the job stops with
+  `SchemaDriftError` before writing, since a spike usually means GDELT changed its
+  layout and a person should look. A new column that GDELT adds is handled with
+  `ALTER TABLE ADD COLUMN`, which Iceberg applies without rewriting data.
 
-### Data quality — a write-time gate (silver) + warehouse tests (gold)
-- **Silver gate:** a small single-pass expectation engine (not-null, unique, in-set,
-  between) with `error`/`warn` severity. Error failures **abort the write** before
-  the MERGE — bad data never reaches silver. A focused engine (rather than a heavier
-  framework) is deterministic, runs in one Spark job, and is trivially unit-tested.
-- **Gold tests:** dbt tests (unique / not-null / **relationships** / accepted-values).
-  The relationship tests are the important ones — they prove every fact foreign key
-  resolves to a dimension member.
+### Data quality: a write-time gate (silver) and tests (gold)
+- Silver gate: a small set of checks (not-null, unique, in-set, between) with
+  `error` or `warn` severity, run as one Spark aggregation. An `error` failure stops
+  the write before the MERGE, so bad data never reaches silver. I wrote a small
+  engine instead of pulling in a bigger framework because it is deterministic, runs
+  in one job, and is easy to test.
+- Gold tests: dbt tests for uniqueness, not-null, relationships, and accepted
+  values. The relationship tests matter most, since they prove every fact foreign
+  key points at a real dimension row.
 
-### Gold — **dbt** star schema on DuckDB (Snowflake in AWS)
-- **Kimball star:** `fact_events` (grain = event) + conformed dims (date, actor,
-  geography, cameo_event). **Surrogate keys** are `md5(natural_key)` computed by the
-  *same macro* on both fact and dim, so relationship tests hold by construction.
-- **dbt reads the Iceberg silver table directly** through the REST/Glue catalog
-  (DuckDB `iceberg` + `httpfs` extensions). *Alternative:* export silver to plain
-  Parquet for dbt — rejected; it duplicates data and breaks the "silver = the Iceberg
-  table" contract. (Bridge quirk: the REST catalog defaults to `oauth2`; DuckDB needs
-  `AUTHORIZATION_TYPE 'none'`.)
-- **`fact_events` is incremental** (`delete+insert` on `event_key`, high-water-marked
-  by `date_added`): each run processes only newly-added events, and re-published
-  events upsert. *Why:* a full rebuild every 15 minutes doesn't scale.
-- **`dim_actor` is SCD Type 2** (dbt snapshot) so actor-attribute history is retained;
-  `dim_geography`/`dim_cameo_event` are Type-1 conformed reference data.
-- **CAMEO seed:** conformed reference data (the 20 CAMEO root categories) joins codes
-  to human labels — the classic seed/lookup pattern.
+### Gold: dbt star schema on DuckDB (Snowflake on AWS)
+- A Kimball star: `fact_events` at one row per event, plus date, actor, geography,
+  and cameo-event dimensions. Surrogate keys are `md5(natural_key)` and the same
+  macro builds them on both the fact and the dimensions, so the relationship tests
+  line up.
+- dbt reads the Iceberg silver table directly through the REST/Glue catalog (DuckDB
+  `iceberg` + `httpfs` extensions). I did not export silver to Parquet for dbt
+  because that duplicates the data and breaks the idea that silver is the Iceberg
+  table. One quirk: the REST catalog defaults to `oauth2`, so DuckDB needs
+  `AUTHORIZATION_TYPE 'none'`.
+- `fact_events` is incremental (`delete+insert` on `event_key`, using `date_added`
+  as the high-water mark), so each run only handles new events and re-published
+  events overwrite. A full rebuild every 15 minutes would not scale.
+- `dim_actor` is SCD Type 2 (a dbt snapshot) so actor history is kept.
+  `dim_geography` and `dim_cameo_event` are Type-1 reference data.
+- A seed maps the 20 CAMEO root codes to readable labels.
 
-### Orchestration — **Airflow**
-- Two DAGs: `gdelt_incremental` (`*/15`, `catchup=False`, `max_active_runs=1`, retries
-  w/ backoff, an SLA) and `gdelt_backfill` (manual, parameterized window). A weekly
-  `gdelt_maintenance` DAG runs Iceberg upkeep.
-- **`catchup=False` + `max_active_runs=1`:** GDELT is a live feed — we want the latest
-  batch, never a backlog of overlapping runs racing on the same table.
-- **Thin orchestration:** ingest runs *in-process* (the package is importable in
-  Airflow); Spark is *triggered* by exec'ing `spark-submit` in the Spark container
-  over the Docker socket; dbt runs from an **isolated venv** (dbt and Airflow have
-  clashing pins — the standard isolation pattern). Each is a clean swap point:
-  `SparkKubernetesOperator`/`EmrAddStepsOperator` for Spark, MWAA for Airflow itself.
+### Orchestration: Airflow
+- Two DAGs: `gdelt_incremental` (every 15 minutes, `catchup=False`,
+  `max_active_runs=1`, retries with backoff, an SLA) and `gdelt_backfill` (manual,
+  with a start/end window). A weekly `gdelt_maintenance` DAG does Iceberg upkeep.
+- `catchup=False` and `max_active_runs=1` because GDELT is a live feed: I want the
+  latest batch, not a backlog of runs racing on the same table.
+- The DAGs stay thin. Ingest runs in-process (the package is importable in
+  Airflow), Spark is triggered by running `spark-submit` in the Spark container over
+  the Docker socket, and dbt runs from its own virtualenv so its dependency versions
+  don't clash with Airflow's. Each step is easy to swap later:
+  `SparkKubernetesOperator` or `EmrAddStepsOperator` for Spark, MWAA for Airflow.
 
-### Streaming — **Kafka/Redpanda**, a parallel real-time path
-- The producer fans a landed batch onto `gdelt.events.raw` (one message/event,
-  **keyed by country** for stable partitioning, **idempotent `acks=all`**). An
-  always-on consumer runs a **consumer group** with **manual offset commits**
-  (at-least-once), applies the per-event DQ gate, **dead-letters** failures to
-  `…dlq`, and routes high-impact conflict events to `…alerts`.
-- **Why a separate path** (not just the batch): exercises the streaming
-  fundamentals — partitions (parallelism + per-key order), consumer groups (scale-out
-  + rebalancing), offsets (progress), DLQ (quarantine), content routing.
-- **Trade-off:** JSON on the wire (readable, dependency-light). Production would use
-  **Avro + Schema Registry** for enforced, evolvable contracts (Redpanda ships a
-  registry; the port is wired).
+### Streaming: Kafka/Redpanda
+- The producer sends a landed batch to `gdelt.events.raw`, one message per event,
+  keyed by country so events for a place land on the same partition, with an
+  idempotent `acks=all` producer. A long-running consumer reads it as a consumer
+  group with manual offset commits (at-least-once), runs the per-event checks,
+  sends failures to a dead-letter topic, and sends high-impact conflict events to an
+  alerts topic.
+- It is a separate path from the batch pipeline so the streaming pieces are real:
+  partitions, consumer groups, offsets, a dead-letter queue, and routing.
+- Trade-off: JSON on the wire, which is easy to read and needs few dependencies.
+  For production I would switch to Avro with a Schema Registry (Redpanda ships one,
+  and the port is already wired).
 
-### IaC / CI / lineage
-- **Terraform:** versioned + encrypted S3 buckets (public access blocked, lifecycle
-  expiry), a **Glue** database as the production Iceberg catalog, **least-privilege
-  IAM** scoped to exactly those buckets + DB. `fmt`/`validate`-clean.
-- **CI:** GitHub Actions runs ruff, `mypy --strict`, pytest, `docker compose config`,
-  and `terraform validate` on every push/PR.
-- **Lineage:** every Airflow task emits **OpenLineage** to **Marquez** (run/job level),
-  captured automatically.
+### Infrastructure, CI, lineage
+- Terraform creates versioned, encrypted S3 buckets (public access blocked, old
+  versions expired), a Glue database for the Iceberg catalog, and an IAM role scoped
+  to just those buckets and that database. It is `fmt`/`validate`-clean.
+- GitHub Actions runs ruff, `mypy --strict`, pytest, `docker compose config`, and
+  `terraform validate` on every push and PR.
+- Airflow emits OpenLineage events to Marquez at the run/job level.
 
----
-
-## 4. Failure modes & recovery
+## 4. Failure modes
 
 | Failure | What happens |
 |---|---|
-| Ingest crashes mid-batch | Checkpoint + existence checks → safe re-run; landed files skipped |
-| GDELT returns a corrupt file | MD5 mismatch raises; that file is recorded failed, batch continues |
-| Silver job re-run on same data | Recency-guarded MERGE → no-op (idempotent) |
-| Bad data in a batch | Silver DQ gate aborts the write before MERGE; stream DLQs the event |
-| A few malformed rows | Quarantined to the `_rejects` table by the field-count contract; good rows still load |
-| GDELT changes its column layout | Malformed rate spikes → `SchemaDriftError` aborts before write; additive change absorbed via Iceberg `ADD COLUMN` |
-| Catalog restart | Persistent SQLite-on-volume (WAL + busy_timeout) survives; prod = Glue |
-| Spark task fails in a DAG | Airflow retries with backoff; MERGE idempotency makes retries safe |
-| Consumer crashes | Offsets committed only after handling → at-least-once redelivery |
+| Ingest crashes mid-batch | Checkpoint and existence checks make a re-run safe; landed files are skipped |
+| GDELT returns a corrupt file | MD5 mismatch raises, the file is logged as failed, the batch continues |
+| Silver job re-run on same data | Recency-guarded MERGE does nothing |
+| Bad data in a batch | Silver checks stop the write before MERGE; the stream dead-letters the event |
+| A few malformed rows | Sent to the rejects table by the field-count check; good rows still load |
+| GDELT changes its column layout | Malformed rate spikes, the job stops before writing; a new column is added with `ALTER TABLE ADD COLUMN` |
+| Catalog restart | SQLite-on-a-volume (WAL + busy_timeout) survives; on AWS this is Glue |
+| Spark task fails in a DAG | Airflow retries with backoff; the MERGE is safe to repeat |
+| Consumer crashes | Offsets are committed only after handling, so messages are redelivered |
 
----
+## 5. Scaling
 
-## 5. Scaling — what breaks first, and the fix
+- Small files and snapshot buildup from frequent MERGEs: the weekly maintenance
+  DAG compacts files and expires old snapshots.
+- Gold rebuilds: the fact table is already incremental; the dimensions could move to
+  incremental or snapshots too.
+- Slow backfill (the masterfilelist scan): cache or index the list, or list by date.
+- One Spark container: submit to a real cluster (EMR or Kubernetes); the DAG's Spark
+  step is already isolated for that swap.
+- Stream throughput: add topic partitions and more consumers in the group; the
+  country key already supports spreading the load.
+- DuckDB is single-node: Snowflake handles concurrent querying at scale on the AWS
+  target.
 
-- **Small files / snapshot bloat** from frequent MERGEs → the `gdelt_maintenance`
-  DAG (compaction, `expire_snapshots`, `rewrite_manifests`, `remove_orphan_files`).
-- **Full-refresh gold** → already **incremental** on the fact; dims would move to
-  incremental/snapshot too.
-- **Backfill masterfilelist scan** (slow) → cache/index the file list; list by date.
-- **Single Spark container** → submit to a real cluster (EMR/K8s); the DAG's Spark
-  step is already abstracted for that swap.
-- **Stream throughput** → more topic partitions + more consumers in the group
-  (horizontal scale via rebalancing); the keying already supports it.
-- **DuckDB gold** (single-node) → Snowflake for concurrent BI at scale (the
-  `GDELT_ENV=aws` target).
+## 6. What it does not do yet
 
----
-
-## 6. Limitations & future work
-
-- **`dim_geography` / `dim_cameo_event` are Type-1** (no history) — a deliberate
-  choice: they're conformed reference data that rarely changes. `dim_actor` is
-  SCD Type 2; extending SCD2 to the others is straightforward if a use case needs it.
-- **Streaming is at-least-once, not exactly-once.** The DLQ/alerts produce isn't
-  transactional with the offset commit, so a crash can re-emit. Kafka transactions
-  (EOS) or an idempotent downstream sink would close this.
-- **Gold on Snowflake is designed, not built** — only the DuckDB target exists;
-  the profile/warehouse wiring is the remaining work.
-- **Lineage is run-level** (Airflow→Marquez). Column-level lineage would need the
-  OpenLineage Spark listener + `openlineage-dbt`.
-- **No pipeline metrics/alerting** beyond Airflow SLAs — a Prometheus/Grafana or
-  Airflow-callback layer would add operational observability.
+- `dim_geography` and `dim_cameo_event` are Type-1, so they keep no history. That is
+  fine for reference data that rarely changes; `dim_actor` already keeps history.
+- Streaming is at-least-once, not exactly-once. The dead-letter/alerts writes are not
+  in the same transaction as the offset commit, so a crash can re-emit a message.
+  Kafka transactions or an idempotent sink would fix that.
+- The Snowflake gold target is written but not run; only the DuckDB target has been
+  used.
+- Lineage is run/job level. Column-level lineage would need the OpenLineage Spark
+  listener and `openlineage-dbt`.
+- There are no pipeline metrics beyond Airflow SLAs. Prometheus/Grafana or an
+  Airflow callback would add that.

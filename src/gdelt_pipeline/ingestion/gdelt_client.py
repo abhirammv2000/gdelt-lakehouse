@@ -2,8 +2,8 @@
 
 GDELT publishes a new batch every 15 minutes. Two index files drive ingestion:
 
-* ``lastupdate.txt``      — the 3 most recent files (export, mentions, gkg)
-* ``masterfilelist.txt``  — every file ever published (used for backfill)
+* ``lastupdate.txt``      - the 3 most recent files (export, mentions, gkg)
+* ``masterfilelist.txt``  - every file ever published (used for backfill)
 
 Each line has the shape::
 

@@ -1,4 +1,4 @@
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Local lakehouse stack (Phase 2).
 #
 #   make up        bring everything up          make down    tear it down
@@ -15,7 +15,7 @@
 #   Marquez API        http://localhost:5000
 #
 # DuckDB is an embedded library (used by dbt in Phase 4), not a service.
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 x-airflow-common: &airflow-common
   build:
@@ -63,7 +63,7 @@ x-airflow-common: &airflow-common
   networks: [gdelt]
 
 services:
-  # ── Object storage ──────────────────────────────────────────────────────────
+  # -- Object storage ----------------------------------------------------------
   minio:
     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
     command: server /data --console-address ":9001"
@@ -97,7 +97,7 @@ services:
       "
     networks: [gdelt]
 
-  # ── Iceberg REST catalog (Phase 3 silver tables live here) ──────────────────
+  # -- Iceberg REST catalog (Phase 3 silver tables live here) ------------------
   iceberg-rest:
     image: apache/iceberg-rest-fixture:1.8.1
     depends_on:
@@ -125,7 +125,7 @@ services:
       - iceberg-catalog:/home/iceberg
     networks: [gdelt]
 
-  # ── Spark + Iceberg (Phase 3 bronze→silver jobs) ────────────────────────────
+  # -- Spark + Iceberg (Phase 3 bronze->silver jobs) ----------------------------
   spark-iceberg:
     build:
       context: .
@@ -159,7 +159,7 @@ services:
       - ./src:/opt/gdelt/src
     networks: [gdelt]
 
-  # ── Streaming (Phase 6 live event stream) ───────────────────────────────────
+  # -- Streaming (Phase 6 live event stream) -----------------------------------
   redpanda:
     image: redpandadata/redpanda:v24.1.9
     command:
@@ -231,7 +231,7 @@ services:
     restart: unless-stopped
     networks: [gdelt]
 
-  # ── Lineage (OpenLineage → Marquez) ─────────────────────────────────────────
+  # -- Lineage (OpenLineage -> Marquez) -----------------------------------------
   marquez-db:
     image: postgres:14
     environment:
@@ -256,7 +256,7 @@ services:
       marquez-db:
         condition: service_healthy
     # The image's marquez.dev.yml reads only these; DB host/name/user are baked
-    # (host "postgres", db/user/password "marquez") — matched by marquez-db above.
+    # (host "postgres", db/user/password "marquez") - matched by marquez-db above.
     environment:
       MARQUEZ_PORT: 5000
       MARQUEZ_ADMIN_PORT: 5001
@@ -279,7 +279,7 @@ services:
       - "3000:3000"
     networks: [gdelt]
 
-  # ── Orchestration (Airflow, LocalExecutor) ──────────────────────────────────
+  # -- Orchestration (Airflow, LocalExecutor) ----------------------------------
   airflow-db:
     image: postgres:14
     environment:

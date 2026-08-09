@@ -1,7 +1,7 @@
-# Terraform — AWS lakehouse infrastructure
+# Terraform - AWS lakehouse infrastructure
 
 Provisions the cloud side of the "same code, two targets" story. The pipeline
-code already switches on `GDELT_ENV=local|aws` (MinIO ⇄ S3, iceberg-rest ⇄ Glue);
+code already switches on `GDELT_ENV=local|aws` (MinIO <-> S3, iceberg-rest <-> Glue);
 this module stands up the AWS half.
 
 ## What it creates
@@ -9,7 +9,7 @@ this module stands up the AWS half.
 | Resource | Purpose |
 |---|---|
 | `aws_s3_bucket` bronze / silver | Raw landing zone + Iceberg silver warehouse (versioned, SSE-encrypted, public access blocked, lifecycle-expiring old versions) |
-| `aws_glue_catalog_database` | Iceberg catalog for the silver tables — the production replacement for the local iceberg-rest-fixture |
+| `aws_glue_catalog_database` | Iceberg catalog for the silver tables - the production replacement for the local iceberg-rest-fixture |
 | `aws_iam_role` + policy | Least-privilege role the pipeline compute (Glue/EMR/EC2) assumes: read/write only the two lake buckets and the silver Glue DB |
 
 Gold lives in **Snowflake** and orchestration in **MWAA** in the full design;

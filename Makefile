@@ -1,4 +1,4 @@
-# GDELT Lakehouse — developer entrypoints
+# GDELT Lakehouse - developer entrypoints
 .DEFAULT_GOAL := help
 .PHONY: help install fmt lint test build up down ps logs ingest backfill spark-build spark-test silver maintain dbt-build dbt-docs clean
 

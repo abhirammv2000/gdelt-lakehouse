@@ -1,14 +1,14 @@
 """GDELT 2.0 Event Database schema.
 
 The export CSVs are tab-delimited, have **no header row**, and carry 61 fixed
-columns. Ordering here is authoritative and matches the GDELT 2.0 codebook
+columns. The order here matches the GDELT 2.0 codebook
 (http://data.gdeltproject.org/documentation/GDELT-Event_Data_Format_Codebook.pdf).
 Downstream Spark parsing zips this list onto the raw columns.
 """
 
 from __future__ import annotations
 
-# (column_name, semantic_type) — semantic_type drives Spark casting in silver.
+# (column_name, semantic_type) - semantic_type drives Spark casting in silver.
 EVENT_COLUMNS: list[tuple[str, str]] = [
     ("global_event_id", "long"),
     ("sql_date", "date_yyyymmdd"),

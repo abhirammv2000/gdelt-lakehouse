@@ -1,6 +1,6 @@
 # Airflow image for the GDELT lakehouse.
 # The gdelt_pipeline package itself is mounted at /opt/airflow/src (PYTHONPATH),
-# so code edits are live — only its dependencies + Airflow providers are baked in.
+# so code edits are live - only its dependencies + Airflow providers are baked in.
 FROM apache/airflow:2.9.3-python3.11
 
 COPY docker/airflow/requirements.txt /requirements.txt

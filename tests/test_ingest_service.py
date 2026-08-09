@@ -80,6 +80,6 @@ def test_ingest_latest_lands_and_is_idempotent(settings: Settings, moto_endpoint
     first = service.ingest_latest()
     assert first.summary == {"landed": 1, "skipped": 0, "failed": 0}
 
-    # Re-running the same batch must skip — proves idempotency.
+    # Re-running the same batch must skip - proves idempotency.
     second = service.ingest_latest()
     assert second.summary == {"landed": 0, "skipped": 1, "failed": 0}
