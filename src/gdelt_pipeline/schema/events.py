@@ -82,4 +82,9 @@ EVENT_COLUMNS: list[tuple[str, str]] = [
 
 EVENT_COLUMN_NAMES: list[str] = [name for name, _ in EVENT_COLUMNS]
 
-assert len(EVENT_COLUMNS) == 61, f"GDELT event schema must be 61 cols, got {len(EVENT_COLUMNS)}"
+# The schema contract: a conformant GDELT export row has exactly this many
+# tab-delimited fields. A different count signals structural schema drift
+# (a column added/removed) or a malformed row.
+EXPECTED_COLUMN_COUNT: int = len(EVENT_COLUMNS)
+
+assert EXPECTED_COLUMN_COUNT == 61, f"GDELT event schema must be 61 cols, got {EXPECTED_COLUMN_COUNT}"
