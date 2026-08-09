@@ -29,7 +29,7 @@ GDELT 2.0 feed (new batch every 15 min)
    ▼ raw zips                                                ▼ streaming consumer
 ╔═ BRONZE  (S3 / MinIO) ═╗   raw CSV, partitioned dt=/hour=
    ▼  PySpark: parse 61-col schema · type · clean · dedup
-╔═ SILVER  (Apache Iceberg on S3) ═╗   typed, ACID, time-travel · Great Expectations checks
+╔═ SILVER  (Apache Iceberg on S3) ═╗   typed, ACID, time-travel · data-quality checks
    ▼  load
 ╔═ GOLD  (Snowflake / DuckDB) ═╗   dbt star schema:
       fact_events · dim_actor · dim_geography · dim_date · dim_cameo_event  (+ marts)
@@ -48,7 +48,7 @@ GDELT 2.0 feed (new batch every 15 min)
 | Orchestration | **Apache Airflow** | Airflow in Docker |
 | Warehouse | **Snowflake** | DuckDB |
 | Transformation | **dbt** (dimensional / star schema) | dbt-duckdb |
-| Data quality | **Great Expectations** + dbt tests | — |
+| Data quality | **PySpark expectation gate** + dbt tests | — |
 | Streaming | **Kafka** | Redpanda |
 | Lineage | **OpenLineage** → Marquez | Marquez in Docker |
 | IaC | **Terraform** (AWS) | — |
@@ -152,8 +152,6 @@ airflow/dags/              incremental + backfill DAGs               (Phase 5)
 src/gdelt_pipeline/streaming/  Kafka producer/consumer + DQ gate       (Phase 6)
   producer.py                fan a bronze batch onto gdelt.events.raw
   consumer.py                DQ-gate → dead-letter / alert (consumer group)
-great_expectations/        data-quality suites                       (Phase 6)
-streaming/                 Kafka producer/consumer                   (Phase 6)
 terraform/                 AWS infra: S3 + Glue Iceberg + IAM         (Phase 7)
 .github/workflows/ci.yml   CI: ruff · mypy · pytest · tf validate     (Phase 7)
 tests/                     unit + integration tests
@@ -169,39 +167,25 @@ captured automatically. Query the lineage API, e.g. the jobs in the namespace:
 curl -s localhost:5000/api/v1/namespaces/gdelt-lakehouse/jobs
 ```
 
-## Engineering practices on display
+## Engineering practices
 
 - **Idempotency** — checkpointing + object-existence checks make every DAG run
   safe to retry; re-ingesting a batch is a no-op (proven by test).
 - **Data integrity** — MD5 verification on every downloaded file.
-- **Schema-drift-proof** — a 61-field contract quarantines non-conformant rows to a
+- **Schema-drift handling** — a 61-field contract quarantines non-conformant rows to a
   rejects table, fails fast on a malformed-rate spike, and absorbs additive drift via
   Iceberg schema evolution (never silently corrupts good data).
 - **Medallion architecture** — bronze (raw) → silver (typed/clean Iceberg) → gold (modeled).
-- **Testing** — unit tests with mocked HTTP (`respx`) and mocked S3 (`moto`); dbt tests; DQ suites.
-- **Type safety & linting** — `ruff`, `mypy --strict`, `sqlfluff`, enforced via `pre-commit` and CI.
-- **Observability** — structured JSON logs and end-to-end column-level lineage.
+- **Testing** — unit tests with mocked HTTP (`respx`) and mocked S3 (`moto`); Spark tests; dbt tests.
+- **Type safety & linting** — `ruff` and `mypy --strict`, enforced via `pre-commit` and CI.
+- **Observability** — structured JSON logs and run-level lineage (OpenLineage → Marquez).
 
-## Build status
+## Status
 
-Built in phases — see the roadmap in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-Phases 0 (scaffold), 1 (ingestion), 2 (local Docker Compose stack), 3 (PySpark
-bronze→silver Iceberg + data-quality gate), 4 (dbt gold star schema on DuckDB,
-reading the Iceberg silver table straight from the REST catalog), and 5 (Airflow
-DAGs wiring ingest→spark→dbt with retries/SLAs, 15-min incremental + backfill) are
-complete and verified against the running stack. Phase 6 (Kafka/Redpanda streaming
-— a producer fans each batch onto a partitioned topic; an always-on consumer
-applies a per-event DQ gate, dead-letters failures, and alerts on high-impact
-conflict events) is complete and verified live. **Phase 7** (Terraform for AWS
-S3 + Glue Iceberg catalog + least-privilege IAM, GitHub Actions CI, and
-OpenLineage → Marquez observability) is complete; the Terraform is
-`fmt`/`validate`-clean and the app switches to AWS via `GDELT_ENV=aws`.
-
-**All 7 phases are done.** For the deep dive, see
-[`docs/DESIGN_DECISIONS.md`](docs/DESIGN_DECISIONS.md) (decisions, trade-offs,
-failure modes, scaling, interview Q&A) and
-[`docs/RESUME_AND_CONCEPTS.md`](docs/RESUME_AND_CONCEPTS.md) (résumé bullets +
-concept cheat-sheet).
+Built in phases (see [`docs/ROADMAP.md`](docs/ROADMAP.md)); the full local stack
+runs and is tested end to end, and the same code targets AWS via `GDELT_ENV=aws`.
+Design rationale and trade-offs are in
+[`docs/DESIGN_DECISIONS.md`](docs/DESIGN_DECISIONS.md).
 
 ## License
 
