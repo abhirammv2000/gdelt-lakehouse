@@ -38,7 +38,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.8",
-    "moto[s3]>=5.0",          # mock S3 for storage tests
+    "moto[s3,server]>=5.0",   # mock S3 for storage tests; server extra powers ThreadedMotoServer
 ]
 
 [project.scripts]
