@@ -27,12 +27,17 @@ class SchemaDriftError(RuntimeError):
     """Raised when too many rows violate the 61-field schema contract."""
 
 
+def _env_or_none(name: str) -> str | None:
+    """Empty/unset means 'use real AWS S3 with the default credential chain'."""
+    return os.environ.get(name) or None
+
+
 def _s3_location() -> S3Location:
     return S3Location(
         bucket=os.environ.get("GDELT_BRONZE_BUCKET", "gdelt-bronze"),
-        endpoint_url=os.environ.get("GDELT_S3_ENDPOINT_URL", "http://minio:9000"),
-        access_key=os.environ.get("GDELT_S3_ACCESS_KEY", "minioadmin"),
-        secret_key=os.environ.get("GDELT_S3_SECRET_KEY", "minioadmin"),
+        endpoint_url=_env_or_none("GDELT_S3_ENDPOINT_URL"),
+        access_key=_env_or_none("GDELT_S3_ACCESS_KEY"),
+        secret_key=_env_or_none("GDELT_S3_SECRET_KEY"),
         region=os.environ.get("GDELT_S3_REGION", "us-east-1"),
     )
 
