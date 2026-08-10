@@ -18,7 +18,8 @@ is one event.
 Ingest (Python) -> bronze (raw zips in S3/MinIO) -> PySpark -> silver (Iceberg,
 typed and deduped) -> dbt -> gold (star schema in DuckDB/Snowflake). Airflow runs
 the schedule, a Kafka/Redpanda path runs off ingestion for the streaming side, and
-Marquez collects lineage. The AWS target is a single `GDELT_ENV` flag away.
+Marquez collects lineage. Moving to AWS is a change of configuration, not code:
+real S3 endpoints and the Glue catalog in place of MinIO and the REST catalog.
 
 The layers follow the medallion pattern. Bronze is the raw feed, unchanged. Silver
 is typed, cleaned, and deduped. Gold is modeled for querying. Keeping them separate
@@ -58,6 +59,9 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   directly. I list and fetch the objects with boto3 on the executors and unzip in
   Python. The alternative, adding the hadoop-aws and matching aws-sdk jars, means
   fragile version matching; boto3 is lighter and behaves the same locally and on AWS.
+- Catalog: the same job writes to the Iceberg REST catalog locally or the Glue Data
+  Catalog on AWS, chosen by `GDELT_ICEBERG_CATALOG_TYPE`. Table data goes through
+  `S3FileIO` either way, so only the catalog wiring changes between the two targets.
 - Partitioning by `days(sql_date)`, because that is how the data gets queried and
   it keeps partitions a reasonable size.
 - Schema-drift handling: each row is checked against the 61-field contract (a lone
@@ -83,7 +87,7 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   and cameo-event dimensions. Surrogate keys are `md5(natural_key)` and the same
   macro builds them on both the fact and the dimensions, so the relationship tests
   line up.
-- dbt reads the Iceberg silver table directly through the REST/Glue catalog (DuckDB
+- dbt reads the Iceberg silver table directly through the REST catalog (DuckDB
   `iceberg` + `httpfs` extensions). I did not export silver to Parquet for dbt
   because that duplicates the data and breaks the idea that silver is the Iceberg
   table. One quirk: the REST catalog defaults to `oauth2`, so DuckDB needs
@@ -96,9 +100,9 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 - A seed maps the 20 CAMEO root codes to readable labels.
 
 ### Orchestration: Airflow
-- Two DAGs: `gdelt_incremental` (every 15 minutes, `catchup=False`,
-  `max_active_runs=1`, retries with backoff, an SLA) and `gdelt_backfill` (manual,
-  with a start/end window). A weekly `gdelt_maintenance` DAG does Iceberg upkeep.
+- Three DAGs: `gdelt_incremental` (every 15 minutes, `catchup=False`,
+  `max_active_runs=1`, retries with backoff, an SLA), `gdelt_backfill` (manual, with
+  a start/end window), and a weekly `gdelt_maintenance` DAG for Iceberg upkeep.
 - `catchup=False` and `max_active_runs=1` because GDELT is a live feed: I want the
   latest batch, not a backlog of runs racing on the same table.
 - The DAGs stay thin. Ingest runs in-process (the package is importable in

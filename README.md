@@ -9,7 +9,8 @@ occasional malformed row). This project ingests that feed, cleans and models it,
 and serves a tested star schema.
 
 The same code runs locally (MinIO, DuckDB, Redpanda) or on AWS (S3, Glue,
-Snowflake), selected by the `GDELT_ENV` environment variable.
+Snowflake). What changes between them is configuration - endpoints, credentials,
+and the catalog type - read from the environment, not the code.
 
 ## Architecture
 
