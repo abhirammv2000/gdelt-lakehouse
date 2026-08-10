@@ -16,6 +16,6 @@ Built in verifiable increments - each phase runs and is tested before the next.
 ## Design principles
 
 - **Idempotent & retry-safe** at every stage (checkpoints, existence checks, Iceberg MERGE).
-- **Same code, two targets** - `GDELT_ENV=local|aws` swaps MinIO/DuckDB for S3/Snowflake.
+- **Same code, two targets** - environment config (endpoints, credentials, catalog type) swaps MinIO/DuckDB/REST for S3/Snowflake/Glue; the code stays the same.
 - **Everything tested** - no phase is "done" until it runs and has a test.
 - **Medallion** bronze -> silver -> gold with clear contracts between layers.
