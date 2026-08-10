@@ -14,11 +14,23 @@
     )
 }}
 
-with source as (
-    select * from {{ ref('stg_events') }}
+-- High-water mark as its own CTE. Keeping the max() here (not inline in the WHERE
+-- below) stops DuckDB from decorrelating the subquery and hoisting the aggregate
+-- into the WHERE clause, which it otherwise rejects with "WHERE clause cannot
+-- contain aggregates". On a full refresh there is no {{ this }} yet, so fall back
+-- to a floor date that lets every row through.
+with high_water as (
     {% if is_incremental() %}
-    where date_added > (select coalesce(max(date_added), timestamp '1900-01-01') from {{ this }})
+    select coalesce(max(date_added), timestamp '1900-01-01') as max_loaded from {{ this }}
+    {% else %}
+    select timestamp '1900-01-01' as max_loaded
     {% endif %}
+),
+
+source as (
+    select e.*
+    from {{ ref('stg_events') }} e
+    where e.date_added > (select max_loaded from high_water)
 )
 
 select
