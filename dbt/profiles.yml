@@ -28,3 +28,17 @@ gdelt_gold:
           options:
             endpoint: "{{ env_var('GDELT_ICEBERG_CATALOG_URI', 'http://localhost:8181') }}"
             authorization_type: none
+
+    # AWS-style warehouse target. Builds the same gold models in BigQuery, reading
+    # silver from a BigQuery dataset (loaded from the Iceberg table). Auth is OAuth
+    # via `gcloud auth application-default login`. Run with: dbt build --target bq
+    bq:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GDELT_BQ_PROJECT', 'final-project-478101') }}"
+      dataset: "{{ env_var('GDELT_BQ_DATASET', 'gdelt_gold') }}"
+      location: "{{ env_var('GDELT_BQ_LOCATION', 'US') }}"
+      threads: 4
+      priority: interactive
+      job_execution_timeout_seconds: 300
+      job_retries: 1

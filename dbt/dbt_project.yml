@@ -27,4 +27,5 @@ seeds:
     cameo_event_root:
       +column_types:
         # Keep the leading zeros ("01".."09"); otherwise they'd load as ints.
-        event_root_code: varchar
+        # varchar on DuckDB, string on BigQuery.
+        event_root_code: "{{ 'varchar' if target.type == 'duckdb' else 'string' }}"

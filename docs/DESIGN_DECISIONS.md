@@ -98,6 +98,12 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 - `dim_actor` is SCD Type 2 (a dbt snapshot) so actor history is kept.
   `dim_geography` and `dim_cameo_event` are Type-1 reference data.
 - A seed maps the 20 CAMEO root codes to readable labels.
+- Warehouse-portable: the same models run on DuckDB locally and on BigQuery. The few
+  dialect points (surrogate-key hashing, date formatting, the incremental strategy,
+  the seed column type) go through adapter-dispatched macros, so
+  `dbt build --target bq` builds the same star schema and passes the same tests in
+  BigQuery. Silver is loaded into a BigQuery dataset first, since BigQuery does not
+  read the Iceberg REST catalog.
 
 ### Orchestration: Airflow
 - Three DAGs: `gdelt_incremental` (every 15 minutes, `catchup=False`,
@@ -167,8 +173,9 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 - Streaming is at-least-once, not exactly-once. The dead-letter/alerts writes are not
   in the same transaction as the offset commit, so a crash can re-emit a message.
   Kafka transactions or an idempotent sink would fix that.
-- The Snowflake gold target is written but not run; only the DuckDB target has been
-  used.
+- The gold models have been run on DuckDB (local) and BigQuery (`--target bq`). A
+  Snowflake target would follow the same adapter-dispatch pattern but is not wired
+  yet.
 - Lineage is run/job level. Column-level lineage would need the OpenLineage Spark
   listener and `openlineage-dbt`.
 - There are no pipeline metrics beyond Airflow SLAs. Prometheus/Grafana or an
