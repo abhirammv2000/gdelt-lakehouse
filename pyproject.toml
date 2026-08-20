@@ -30,6 +30,7 @@ stream = [
 dbt = [
     "dbt-duckdb>=1.9",        # local gold: dbt models over the Iceberg silver table
     "duckdb>=1.4",            # reads the Iceberg REST catalog on MinIO
+    "dbt-bigquery>=1.9",      # cloud warehouse target: the same gold models on BigQuery
 ]
 dev = [
     "pytest>=8.2",

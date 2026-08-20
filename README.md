@@ -22,8 +22,9 @@ A bronze / silver / gold medallion layout:
   clean, drop duplicates, and MERGE into an Iceberg table. Rows that do not match
   the 61-field contract go to a rejects table instead of being forced into the data.
 - Silver to gold (dbt): a star schema (`fact_events` plus date, actor, geography,
-  and cameo-event dimensions) built in DuckDB locally or Snowflake on AWS, with
-  dbt tests.
+  and cameo-event dimensions) with dbt tests. The same models run on DuckDB locally
+  and on BigQuery (`dbt build --target bq`); a Snowflake target would follow the same
+  pattern.
 - Orchestration (Airflow): a 15-minute incremental DAG, a backfill DAG, and a
   weekly Iceberg maintenance DAG.
 - Streaming (Kafka/Redpanda): a producer publishes each batch to a topic; a

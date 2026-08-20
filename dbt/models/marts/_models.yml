@@ -43,6 +43,9 @@ models:
           - accepted_values:
               arguments:
                 values: [1, 2, 3, 4]
+                # quad_class is an integer; compare as numbers, not quoted strings,
+                # so the test works on BigQuery (which won't cast INT64 to STRING).
+                quote: false
 
   - name: fact_events
     description: >

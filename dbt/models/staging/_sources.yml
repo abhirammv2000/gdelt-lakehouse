@@ -4,10 +4,12 @@ sources:
   - name: silver
     description: >
       The silver medallion layer: one typed, de-duplicated row per GDELT event,
-      written as an Apache Iceberg table by the PySpark bronze->silver job and
-      read here through the Iceberg REST catalog attached as the `lake` database.
-    database: lake
-    schema: gdelt
+      written as an Apache Iceberg table by the PySpark bronze->silver job. Locally
+      it is read through the Iceberg REST catalog attached as the `lake` database;
+      on BigQuery it is a table loaded into a dataset. Both are set by env vars so
+      the same models run against either.
+    database: "{{ env_var('GDELT_SILVER_DB', 'lake') }}"
+    schema: "{{ env_var('GDELT_SILVER_SCHEMA', 'gdelt') }}"
     tables:
       - name: events
         description: "Typed, deduped GDELT 2.0 events (grain: one global_event_id)."

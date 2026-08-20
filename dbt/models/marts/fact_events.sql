@@ -10,7 +10,7 @@
     config(
         materialized="incremental",
         unique_key="event_key",
-        incremental_strategy="delete+insert",
+        incremental_strategy=("delete+insert" if target.type == "duckdb" else "merge"),
     )
 }}
 
@@ -37,7 +37,7 @@ select
     global_event_id as event_key,
 
     -- foreign keys
-    cast(strftime(sql_date, '%Y%m%d') as integer)                        as date_key,
+    {{ yyyymmdd('sql_date') }}                                           as date_key,
     {{ md5_key('actor1_code') }}                                         as actor1_key,
     {{ md5_key('actor2_code') }}                                         as actor2_key,
     {{ md5_key('coalesce(action_geo_feature_id, action_geo_fullname)') }} as action_geo_key,
