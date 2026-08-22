@@ -161,6 +161,22 @@ events to Marquez, which records 12 jobs across the three DAGs with their run st
 <!-- ![gdelt_incremental DAG in Airflow](docs/images/airflow_dag.png) -->
 <!-- ![Job lineage in Marquez](docs/images/marquez_lineage.png) -->
 
+### The failure modes are tested, not just claimed
+
+The failure-mode table in the design doc is backed by tests that trigger each
+failure on purpose: a corrupt file that fails its MD5 while the rest of the batch
+still lands, a partial batch that re-runs and fetches only what is missing, a
+mixed batch of truncated and over-wide rows, a phantom 62nd column (and the
+historical trailing tab that must *not* be mistaken for one), a replayed batch
+that tries to move the checkpoint backwards.
+
+```bash
+pytest tests/test_failure_modes.py     # 7 passed
+```
+
+These run in CI on every push. Four rows in that table have no automated proof and
+are labelled as such rather than left to look covered.
+
 ## Quickstart
 
 ```bash

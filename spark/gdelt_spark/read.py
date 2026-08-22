@@ -7,13 +7,14 @@ reader can't see inside a zip, and this image has no ``s3a`` filesystem, so we:
   2. parallelize the keys and fetch+unzip each on the executors,
   3. build a DataFrame of 61 string columns (+ ``_source_file``).
 
+Row parsing and the 61-field contract check live in
+``gdelt_pipeline.schema.parse``; this module is only the Spark plumbing.
+
 Casting/cleaning happens later in ``transform.py``; bronze stays an unmodified copy.
 """
 
 from __future__ import annotations
 
-import io
-import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -22,7 +23,12 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
-_N_COLS = len(EVENT_COLUMN_NAMES)  # 61 - the schema contract
+# The contract parsing lives in the package (pure Python, no Spark) so the
+# schema-drift behaviour is testable in CI. Re-exported here because this is
+# where the Spark side of the job reaches for it.
+from gdelt_pipeline.schema.parse import records_from_zip
+
+__all__ = ["S3Location", "read_bronze", "list_bronze_keys", "records_from_zip"]
 
 
 @dataclass(frozen=True)
@@ -55,32 +61,6 @@ def _raw_schema() -> StructType:
     fields.append(StructField("_field_count", IntegerType(), nullable=False))
     fields.append(StructField("_raw_line", StringType(), nullable=True))
     return StructType(fields)
-
-
-def records_from_zip(source_file: str, content: bytes) -> Iterator[tuple[object, ...]]:
-    """Yield one row-tuple per data line: 61 fields + source, field count, raw line.
-
-    Fields are padded/truncated to 61 so the good path keeps a fixed schema, but
-    ``_field_count`` carries the *actual* count (after normalizing the historical
-    single trailing-tab quirk) so the job can detect and quarantine drifted rows.
-    Decoding uses UTF-8 with replacement to survive GDELT's encoding quirks.
-    """
-    with zipfile.ZipFile(io.BytesIO(content)) as zf:
-        names = zf.namelist()
-        if not names:
-            return
-        text = zf.read(names[0]).decode("utf-8", errors="replace")
-    for line in text.split("\n"):
-        stripped = line.rstrip("\r")
-        if not stripped.strip():
-            continue
-        parts = stripped.split("\t")
-        # Normalize the historical trailing-tab quirk: a lone empty trailing field.
-        if len(parts) == _N_COLS + 1 and parts[-1] == "":
-            parts = parts[:-1]
-        field_count = len(parts)
-        fields: list[str | None] = (parts + [None] * _N_COLS)[:_N_COLS]  # type: ignore[assignment]
-        yield (*fields, source_file, field_count, stripped)
 
 
 def list_bronze_keys(loc: S3Location, prefix: str) -> list[str]:

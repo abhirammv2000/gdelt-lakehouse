@@ -143,18 +143,25 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 
 ## 4. Failure modes
 
-| Failure | What happens |
-|---|---|
-| Ingest crashes mid-batch | Checkpoint and existence checks make a re-run safe; landed files are skipped |
-| GDELT returns a corrupt file | MD5 mismatch raises, the file is logged as failed, the batch continues |
-| Silver job re-run on same data | Recency-guarded MERGE does nothing |
-| Bad data in a batch | Silver checks stop the write before MERGE; the stream dead-letters the event |
-| A few malformed rows | Sent to the rejects table by the field-count check; good rows still load |
-| GDELT changes its column layout | Malformed rate spikes, the job stops before writing; a new column is added with `ALTER TABLE ADD COLUMN` |
-| Catalog restart | SQLite-on-a-volume (WAL + busy_timeout) survives; on AWS this is Glue |
-| Spark task fails in a DAG | Airflow retries with backoff; the MERGE is safe to repeat |
-| Consumer crashes | Offsets are committed only after handling, so messages are redelivered |
-| Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers 403 |
+Each row links to the test that triggers the failure on purpose and asserts the
+behaviour. The FM-n tests live in `tests/test_failure_modes.py` and run in CI on
+every push; the Spark-side ones run in the Spark container via `make spark-test`.
+Rows marked "not automated" are claims I have exercised by hand but have not
+turned into a test, and I would rather say so than imply coverage I do not have.
+
+| Failure | What happens | Proof |
+|---|---|---|
+| GDELT returns a corrupt file | MD5 mismatch raises, the file is logged as failed, the batch continues | FM-1 |
+| Ingest crashes mid-batch | Existence checks skip what landed, so a re-run fetches only what is missing | FM-2 |
+| A few malformed rows | Separated by the field-count check and quarantined; good rows still load | FM-3 |
+| GDELT changes its column layout | A real extra column is flagged while the historical trailing tab is not; above the malformed-rate threshold the job stops before writing | FM-4, `spark/tests` |
+| Bad data in a batch | Silver expectations stop the write before the MERGE; the stream gate names each violation so the consumer dead-letters it | FM-5, `spark/tests/test_validate.py` |
+| Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers a bare 403 | FM-6 |
+| Out-of-order or replayed batch | The checkpoint is monotonic and never moves backwards | FM-7 |
+| Silver job re-run on same data | Recency-guarded MERGE leaves the table unchanged | Observed in the runs in the README; not automated |
+| Spark task fails in a DAG | Airflow retries with backoff, and the MERGE is safe to repeat | Not automated |
+| Consumer crashes | Offsets are committed only after handling, so messages are redelivered | Not automated |
+| Catalog restart | SQLite on a volume (WAL + busy_timeout) survives; on AWS this is Glue | Not automated |
 
 ## 5. Scaling
 
