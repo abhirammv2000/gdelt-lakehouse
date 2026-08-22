@@ -44,8 +44,13 @@ A bronze / silver / gold medallion layout:
 | Streaming | Redpanda | Kafka (not run) |
 | Infrastructure | Docker Compose | Terraform (S3, Glue, IAM) |
 
-Everything in the Local column runs with `make up`. In the Cloud column, S3, Glue,
-and BigQuery have each been run end to end; MWAA and managed Kafka have not.
+Everything in the Local column runs with `make up`. The Cloud column is narrower
+than it looks, so to be exact: ingestion and the Spark bronze-to-silver job have been
+run against real S3 and the Glue catalog, and the dbt gold models against BigQuery.
+In both cases Spark and dbt ran as local processes pointed at those services, not on
+EMR or MWAA, and the two halves were verified separately rather than as one unbroken
+cloud run. Managed Kafka and MWAA have not been run at all. The AWS resources were
+created with Terraform, verified, and destroyed.
 
 ## Results
 
