@@ -40,6 +40,7 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "moto[s3,server]>=5.0",   # mock S3 for storage tests; server extra powers ThreadedMotoServer
+    "matplotlib>=3.8",        # scripts/plot_top_event_types.py regenerates the README chart
 ]
 
 [project.scripts]

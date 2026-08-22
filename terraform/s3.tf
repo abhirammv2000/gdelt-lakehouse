@@ -1,7 +1,7 @@
 locals {
   suffix = var.bucket_suffix != "" ? "-${var.bucket_suffix}" : ""
 
-  # The medallion object-storage layers. Gold lives in a warehouse (Snowflake),
+  # The medallion object-storage layers. Gold lives in a warehouse (BigQuery),
   # so only bronze (raw) and silver (Iceberg) are S3 buckets.
   buckets = {
     bronze = "${var.project_name}-bronze${local.suffix}"

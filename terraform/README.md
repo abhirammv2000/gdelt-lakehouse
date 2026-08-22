@@ -12,9 +12,11 @@ this module stands up the AWS half.
 | `aws_glue_catalog_database` | Iceberg catalog for the silver tables - the production replacement for the local iceberg-rest-fixture |
 | `aws_iam_role` + policy | Least-privilege role the pipeline compute (Glue/EMR/EC2) assumes: read/write only the two lake buckets and the silver Glue DB |
 
-Gold lives in **Snowflake** and orchestration in **MWAA** in the full design;
-those are intentionally left as separate root modules (they carry standing cost
-and org-specific wiring) rather than bundled here.
+This module covers the lake only: object storage, the Iceberg catalog, and the
+role that reads and writes them. Gold runs in **BigQuery** (see `dbt/profiles.yml`,
+target `bq`), which is provisioned by dbt rather than Terraform. Managed
+orchestration (**MWAA**) is not included; it carries standing cost and org-specific
+wiring, and Airflow runs locally here.
 
 ## Usage
 

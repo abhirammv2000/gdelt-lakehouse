@@ -16,7 +16,7 @@ is one event.
 ## 2. Architecture
 
 Ingest (Python) -> bronze (raw zips in S3/MinIO) -> PySpark -> silver (Iceberg,
-typed and deduped) -> dbt -> gold (star schema in DuckDB/Snowflake). Airflow runs
+typed and deduped) -> dbt -> gold (star schema in DuckDB or BigQuery). Airflow runs
 the schedule, a Kafka/Redpanda path runs off ingestion for the streaming side, and
 Marquez collects lineage. Moving to AWS is a change of configuration, not code:
 real S3 endpoints and the Glue catalog in place of MinIO and the REST catalog.
@@ -82,7 +82,7 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   values. The relationship tests matter most, since they prove every fact foreign
   key points at a real dimension row.
 
-### Gold: dbt star schema on DuckDB (Snowflake on AWS)
+### Gold: dbt star schema on DuckDB, and on BigQuery
 - A Kimball star: `fact_events` at one row per event, plus date, actor, geography,
   and cameo-event dimensions. Surrogate keys are `md5(natural_key)` and the same
   macro builds them on both the fact and the dimensions, so the relationship tests
@@ -163,8 +163,7 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   step is already isolated for that swap.
 - Stream throughput: add topic partitions and more consumers in the group; the
   country key already supports spreading the load.
-- DuckDB is single-node: Snowflake handles concurrent querying at scale on the AWS
-  target.
+- DuckDB is single-node: the BigQuery target handles concurrent querying at scale.
 
 ## 6. What it does not do yet
 
@@ -180,3 +179,79 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   listener and `openlineage-dbt`.
 - There are no pipeline metrics beyond Airflow SLAs. Prometheus/Grafana or an
   Airflow callback would add that.
+
+## 7. Honest answers to the obvious questions
+
+### Why Spark, when the data fits in memory?
+
+At the volume shown in the README (about 900 events per 15-minute batch, 10,163 rows
+total) Spark is the wrong tool and I would not defend it on performance. Most of the
+40 seconds is JVM startup. Pandas or DuckDB would finish in under a second.
+
+Two reasons it is still here. First, the same job has to run over a backfill window as
+well as a single batch, and GDELT's full history is roughly 96 files a day going back
+to 2015, which is hundreds of millions of events. I did not want one code path for
+"small" and another for "large." Second, Iceberg's most complete engine integration is
+Spark: `MERGE INTO`, schema evolution, and the maintenance procedures
+(`rewrite_data_files`, `expire_snapshots`) are all first-class there and partial
+elsewhere.
+
+The honest version of this trade-off: if I were running only the 15-minute incremental
+path in production, I would move it to DuckDB or Polars and keep Spark for backfills
+and compaction. The current design pays a fixed startup cost every 15 minutes to avoid
+maintaining two implementations, and at this volume that is a bad trade. It becomes a
+good trade somewhere around the point where a batch no longer fits comfortably on one
+machine.
+
+### Why Kafka, when the source is a 15-minute batch feed?
+
+The batch pipeline does not need it, and this is the component I would cut first.
+GDELT publishes on a fixed 15-minute cadence, so there is no continuous stream to
+consume. What arrives is a file, and treating it as a stream is a choice, not a
+requirement.
+
+What the streaming path does earn: the consumer applies a per-event quality gate,
+dead-letters what fails, and routes high-impact conflict events to an alerts topic.
+If something downstream needs to react to an individual event rather than wait for the
+next warehouse build, a topic decouples that consumer from the pipeline better than
+polling gold on a schedule. That is a real pattern, and the implementation exercises
+the parts that matter: keyed partitioning so one country's events stay ordered,
+a consumer group with manual offset commits, and a dead-letter topic.
+
+But it is a parallel path, not a dependency. The batch pipeline is correct with the
+streaming stack turned off. Calling this "real-time" would be a stretch: the freshest
+an event can be is however long ago GDELT published, which averages 7.5 minutes.
+
+### What would break first at 100x?
+
+100x here means roughly 90,000 events per 15-minute batch instead of 900, with the
+table growing proportionally.
+
+**The copy-on-write MERGE, and it breaks quietly rather than loudly.** The silver table
+is created with `write.merge.mode = copy-on-write`, so every merge rewrites whole data
+files that contain any touched row. The incoming batch stays a constant size, but the
+files it touches grow with the table, so per-batch merge time climbs without bound even
+at a constant ingest rate. Eventually a 15-minute batch takes longer than 15 minutes and
+the schedule collapses backwards. The fix is `merge-on-read` plus frequent compaction,
+trading read amplification for write cost.
+
+In roughly the order they would hurt after that:
+
+1. **Small-file accumulation.** 96 merges a day across date partitions produces
+   thousands of small Parquet files. The maintenance DAG compacts weekly, which is
+   already generous and would need to be hourly at 100x.
+2. **Driver-side object listing.** `list_bronze_keys` pages the whole bronze prefix with
+   boto3 on the driver and parallelizes the key list. That is fine for hundreds of
+   objects and a bottleneck at hundreds of thousands. It needs date-prefix pruning or a
+   manifest instead of a full listing.
+3. **The dedup shuffle.** Deduplication is a window over `global_event_id` ordered by
+   `date_added`, which is a full shuffle of the batch. It scales horizontally, so this
+   costs money rather than correctness.
+4. **DuckDB gold.** Single node, single file, one writer. This is why the BigQuery
+   target exists and has been run.
+5. **Backfill.** Already the slowest path, since it scans GDELT's full
+   `masterfilelist.txt` and filters in Python. Linear in history length.
+
+What would not break: the ingestion checkpoint, the schema contract, and the quality
+gate are all per-batch and constant-cost, and the Iceberg MERGE stays correct under
+retries regardless of size.
