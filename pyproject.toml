@@ -31,6 +31,7 @@ dbt = [
     "dbt-duckdb>=1.9",        # local gold: dbt models over the Iceberg silver table
     "duckdb>=1.4",            # reads the Iceberg REST catalog on MinIO
     "dbt-bigquery>=1.9",      # cloud warehouse target: the same gold models on BigQuery
+    "dbt-athena-community>=1.9",  # AWS warehouse target: gold on Athena over Glue/Iceberg
 ]
 dev = [
     "pytest>=8.2",

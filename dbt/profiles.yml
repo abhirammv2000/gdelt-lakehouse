@@ -42,3 +42,16 @@ gdelt_gold:
       priority: interactive
       job_execution_timeout_seconds: 300
       job_retries: 1
+
+    # AWS warehouse target. Athena queries the same Glue/Iceberg silver table that
+    # the Spark job writes, so gold is built in place with no data movement.
+    # Run with: dbt build --target athena
+    athena:
+      type: athena
+      s3_staging_dir: "{{ env_var('GDELT_ATHENA_STAGING') }}"
+      s3_data_dir: "{{ env_var('GDELT_ATHENA_DATA') }}"
+      region_name: "{{ env_var('GDELT_S3_REGION', 'us-east-2') }}"
+      database: awsdatacatalog
+      schema: "{{ env_var('GDELT_ATHENA_SCHEMA', 'gdelt_lakehouse_gold') }}"
+      work_group: primary
+      threads: 4

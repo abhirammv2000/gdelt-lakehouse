@@ -38,19 +38,22 @@ A bronze / silver / gold medallion layout:
 | Object storage | MinIO | AWS S3 |
 | Table format | Apache Iceberg (REST catalog) | Apache Iceberg (AWS Glue catalog) |
 | Processing | PySpark | PySpark |
-| Warehouse | DuckDB | BigQuery |
+| Warehouse | DuckDB | Athena (AWS) or BigQuery |
 | Transform | dbt | dbt |
 | Orchestration | Airflow | Airflow (MWAA not run) |
 | Streaming | Redpanda | Kafka (not run) |
 | Infrastructure | Docker Compose | Terraform (S3, Glue, IAM) |
 
-Everything in the Local column runs with `make up`. The Cloud column is narrower
-than it looks, so to be exact: ingestion and the Spark bronze-to-silver job have been
-run against real S3 and the Glue catalog, and the dbt gold models against BigQuery.
-In both cases Spark and dbt ran as local processes pointed at those services, not on
-EMR or MWAA, and the two halves were verified separately rather than as one unbroken
-cloud run. Managed Kafka and MWAA have not been run at all. The AWS resources were
-created with Terraform, verified, and destroyed.
+Everything in the Local column runs with `make up`. The whole pipeline has also been
+run on AWS as one continuous chain: ingestion into S3, the Spark bronze-to-silver job
+writing Iceberg through the Glue catalog, and the dbt gold models built by Athena
+reading that same Glue table, so gold is created in place with no data movement. The
+same models also build on BigQuery (`--target bq`).
+
+Two honest limits. Spark, dbt, and Airflow run as local processes pointed at AWS
+rather than on EMR and MWAA, which are a deployment target rather than a code change
+but have not been run. Managed Kafka has not been run either. The AWS resources are
+created with Terraform and destroyed after each run, so nothing is standing.
 
 ## Results
 
@@ -127,6 +130,25 @@ group by 1 order by events desc limit 3;
 | Engage in Diplomatic Cooperation | 818 | 0.16 |
 
 Regenerate the chart with `python scripts/plot_top_event_types.py`.
+
+### The same pipeline on AWS
+
+Run end to end against real AWS, with Terraform creating the buckets, the Glue
+database, and a least-privilege IAM role first.
+
+| Stage | Where it ran | Result |
+|---|---|---|
+| Ingest | S3 bronze bucket | 1 batch landed, 18 KB |
+| Bronze to silver | Spark, Iceberg on the Glue catalog | 317 rows, 0 non-conformant, 9/9 quality checks |
+| Gold | dbt via Athena on the same Glue tables | `PASS=28 WARN=0 ERROR=0` |
+
+All five gold tables register in Glue as `table_type=ICEBERG` backed by S3, and the
+quad-class query reproduces the same Goldstein polarity as the local run (+5.79 for
+material cooperation, -7.85 for material conflict) on independently ingested data.
+
+The gold models therefore run unchanged on three warehouses: DuckDB, BigQuery, and
+Athena. The dialect differences (hashing, date formatting, incremental strategy) go
+through adapter-dispatched macros in `dbt/macros/`.
 
 **Orchestration and lineage.** The `gdelt_incremental` DAG runs ingest, bronze to
 silver, and dbt build, with the stream publish in parallel. Airflow emits OpenLineage

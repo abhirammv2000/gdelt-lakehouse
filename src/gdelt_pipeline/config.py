@@ -55,16 +55,21 @@ class Settings(BaseSettings):
 
     @property
     def storage_options(self) -> dict[str, object]:
-        """fsspec/s3fs kwargs. Empty when running against real AWS with an IAM role."""
+        """fsspec/s3fs kwargs.
+
+        Credentials are omitted when unset so real AWS falls back to the default
+        chain (profile, env vars, or an instance role). The region is always sent:
+        without it s3fs signs for us-east-1 and a bucket in another region answers
+        403, which surfaces as a bare "Forbidden" that looks like a permissions bug.
+        """
         opts: dict[str, object] = {}
         if self.s3_access_key and self.s3_secret_key:
             opts["key"] = self.s3_access_key
             opts["secret"] = self.s3_secret_key
+        client_kwargs: dict[str, object] = {"region_name": self.s3_region}
         if self.s3_endpoint_url:  # MinIO / localstack
-            opts["client_kwargs"] = {
-                "endpoint_url": self.s3_endpoint_url,
-                "region_name": self.s3_region,
-            }
+            client_kwargs["endpoint_url"] = self.s3_endpoint_url
+        opts["client_kwargs"] = client_kwargs
         return opts
 
 

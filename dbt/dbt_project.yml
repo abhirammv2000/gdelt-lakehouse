@@ -21,6 +21,16 @@ models:
     marts:
       +materialized: table
       +schema: marts
+      # Ignored by DuckDB/BigQuery; on Athena it selects Iceberg tables, which
+      # MERGE incrementals and snapshots both require.
+      +table_type: iceberg
+    intermediate:
+      +materialized: table
+      +table_type: iceberg
+
+snapshots:
+  gdelt_gold:
+    +table_type: iceberg
 
 seeds:
   gdelt_gold:

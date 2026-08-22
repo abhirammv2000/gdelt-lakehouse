@@ -16,6 +16,9 @@
 {% macro bigquery__yyyymmdd(col) %}
     cast(format_date('%Y%m%d', {{ col }}) as int64)
 {% endmacro %}
+{% macro athena__yyyymmdd(col) %}
+    cast(date_format({{ col }}, '%Y%m%d') as integer)
+{% endmacro %}
 
 {# Full month name, e.g. "August". #}
 {% macro month_name(col) %}
@@ -26,6 +29,9 @@
 {% endmacro %}
 {% macro bigquery__month_name(col) %}
     format_date('%B', {{ col }})
+{% endmacro %}
+{% macro athena__month_name(col) %}
+    date_format({{ col }}, '%M')
 {% endmacro %}
 
 {# Full weekday name, e.g. "Monday". #}
@@ -38,6 +44,9 @@
 {% macro bigquery__day_name(col) %}
     format_date('%A', {{ col }})
 {% endmacro %}
+{% macro athena__day_name(col) %}
+    date_format({{ col }}, '%W')
+{% endmacro %}
 
 {# Day of week normalized to 0=Sunday .. 6=Saturday on both engines. #}
 {% macro day_of_week(col) %}
@@ -48,4 +57,7 @@
 {% endmacro %}
 {% macro bigquery__day_of_week(col) %}
     (extract(dayofweek from {{ col }}) - 1)
+{% endmacro %}
+{% macro athena__day_of_week(col) %}
+    (day_of_week({{ col }}) % 7)
 {% endmacro %}

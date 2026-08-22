@@ -98,12 +98,15 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 - `dim_actor` is SCD Type 2 (a dbt snapshot) so actor history is kept.
   `dim_geography` and `dim_cameo_event` are Type-1 reference data.
 - A seed maps the 20 CAMEO root codes to readable labels.
-- Warehouse-portable: the same models run on DuckDB locally and on BigQuery. The few
+- Warehouse-portable: the same models run on DuckDB, BigQuery, and Athena. The few
   dialect points (surrogate-key hashing, date formatting, the incremental strategy,
-  the seed column type) go through adapter-dispatched macros, so
-  `dbt build --target bq` builds the same star schema and passes the same tests in
-  BigQuery. Silver is loaded into a BigQuery dataset first, since BigQuery does not
-  read the Iceberg REST catalog.
+  the seed column type) go through adapter-dispatched macros, so `--target bq` and
+  `--target athena` build the same star schema and pass the same tests.
+- Athena is the AWS target and the tidiest of the three, because it reads the same
+  Glue/Iceberg silver table the Spark job writes and creates the gold tables as
+  Iceberg in S3. Nothing is copied or exported: silver and gold are the same catalog.
+  BigQuery cannot read the Iceberg REST catalog, so that path loads silver into a
+  BigQuery dataset first, which is a real disadvantage compared with Athena.
 
 ### Orchestration: Airflow
 - Three DAGs: `gdelt_incremental` (every 15 minutes, `catchup=False`,
@@ -151,6 +154,7 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 | Catalog restart | SQLite-on-a-volume (WAL + busy_timeout) survives; on AWS this is Glue |
 | Spark task fails in a DAG | Airflow retries with backoff; the MERGE is safe to repeat |
 | Consumer crashes | Offsets are committed only after handling, so messages are redelivered |
+| Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers 403 |
 
 ## 5. Scaling
 
