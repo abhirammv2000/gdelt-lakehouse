@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = 60.0
     max_retries: int = 5
 
+    # Backfill scope. GDELT's full history runs back to 2015, which is hundreds
+    # of millions of rows; nothing about the code stops a `gdelt_backfill` trigger
+    # from being pointed at all of it. This caps the window one backfill run can
+    # cover so that "backfill" means a deliberate, bounded catch-up, not an accidental
+    # full-archive load. A full-archive backfill is still possible, but it takes
+    # raising this number on purpose, not a typo in an Airflow trigger config.
+    max_backfill_days: int = 30
+
     @property
     def enabled_feeds(self) -> list[str]:
         return [f.strip() for f in self.feeds.split(",") if f.strip()]

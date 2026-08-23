@@ -8,6 +8,11 @@ list. Trigger with a config like::
 
 Because ingest is checkpoint/existence-guarded and the Iceberg MERGE is
 recency-guarded, re-running a backfill over an already-loaded window is a no-op.
+
+The window is capped at ``GDELT_MAX_BACKFILL_DAYS`` (30 by default) so a mistyped
+config can't turn one trigger into a multi-year load against GDELT's full archive
+back to 2015. `ingest_window` fails fast with a clear message if the window is
+inverted or too wide; it does not silently truncate it.
 """
 
 from __future__ import annotations

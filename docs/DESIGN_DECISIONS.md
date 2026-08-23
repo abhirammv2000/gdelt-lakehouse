@@ -269,3 +269,18 @@ In roughly the order they would hurt after that:
 What would not break: the ingestion checkpoint, the schema contract, and the quality
 gate are all per-batch and constant-cost, and the Iceberg MERGE stays correct under
 retries regardless of size.
+
+### Does the pipeline actually stop anywhere, or would it run forever?
+
+Until recently, no: `gdelt_backfill` took a start and end date as free-text strings
+and pulled whatever fell between them from GDELT's full `masterfilelist.txt`, which
+goes back to 2015. Nothing stopped a mistyped or over-eager trigger config from
+turning one Airflow run into a load against the entire archive, which is hundreds
+of millions of rows this project has never been tested against.
+
+`IngestService.backfill` now rejects an inverted window and caps the width at
+`GDELT_MAX_BACKFILL_DAYS` (30 days by default), raising a plain `ValueError` before
+a single file is listed. A genuinely large backfill is still possible; it now takes
+deliberately raising that number rather than a typo in a trigger config. The default
+is arbitrary in the sense that any number is - the point is that there is one, it is
+named, and it is enforced in code rather than only described in this document.

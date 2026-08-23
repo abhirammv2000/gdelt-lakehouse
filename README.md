@@ -213,6 +213,10 @@ Backfill a date range:
 make backfill FROM=2026-07-20 TO=2026-07-21
 ```
 
+The window is capped at 30 days (`GDELT_MAX_BACKFILL_DAYS`) so a mistyped range can't
+turn one run into a load against GDELT's full archive back to 2015. Widening it is a
+config change, not something a trigger typo can do by accident.
+
 Build the same gold models on BigQuery:
 
 ```bash

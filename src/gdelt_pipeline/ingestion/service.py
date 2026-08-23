@@ -42,7 +42,24 @@ class IngestService:
             return self._ingest_files(client, files)
 
     def backfill(self, start: datetime, end: datetime) -> IngestResult:
-        """Ingest every published file with a timestamp in [start, end)."""
+        """Ingest every published file with a timestamp in [start, end).
+
+        Raises ``ValueError`` for an inverted or over-wide window rather than
+        quietly starting a run that could pull years of history. The width limit
+        is ``max_backfill_days``; widen it deliberately if a larger backfill is
+        actually intended.
+        """
+        if end <= start:
+            raise ValueError(f"backfill end ({end}) must be after start ({start})")
+        window_days = (end - start).days
+        limit = self._settings.max_backfill_days
+        if window_days > limit:
+            raise ValueError(
+                f"backfill window is {window_days} days, which is wider than the "
+                f"configured limit of {limit} (GDELT_MAX_BACKFILL_DAYS). Split the "
+                "request into smaller windows, or raise the limit if a run this "
+                "large is actually intended."
+            )
         with GdeltClient(
             self._settings.base_url,
             timeout=self._settings.http_timeout_seconds,

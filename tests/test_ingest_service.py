@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import boto3
 import httpx
@@ -83,3 +84,22 @@ def test_ingest_latest_lands_and_is_idempotent(settings: Settings, moto_endpoint
     # Re-running the same batch must skip - proves idempotency.
     second = service.ingest_latest()
     assert second.summary == {"landed": 0, "skipped": 1, "failed": 0}
+
+
+def test_backfill_rejects_inverted_window(settings: Settings) -> None:
+    service = IngestService(settings)
+    start = datetime(2026, 7, 22, tzinfo=UTC)
+    end = datetime(2026, 7, 20, tzinfo=UTC)  # before start
+
+    with pytest.raises(ValueError, match="must be after"):
+        service.backfill(start, end)
+
+
+def test_backfill_rejects_window_wider_than_limit(settings: Settings) -> None:
+    service = IngestService(settings)
+    assert settings.max_backfill_days == 30  # the default this test relies on
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 8, 1, tzinfo=UTC)  # 212 days, well past the limit
+
+    with pytest.raises(ValueError, match="wider than the configured limit"):
+        service.backfill(start, end)
