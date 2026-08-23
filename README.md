@@ -75,6 +75,17 @@ for the shape of the work, not this volume (see
 **Data quality**: 10,163 of 10,163 rows matched the 61-field contract (0 quarantined),
 and all 9 silver expectations plus all 19 dbt tests passed (`PASS=28 ERROR=0`).
 
+Row-level tests only see rows that actually landed, so they cannot catch the failure
+that matters most on a schedule: nothing landing at all. `dbt source freshness` closes
+that gap by checking the newest `date_added` in silver against how long ago it should
+have been refreshed (warn past 20 minutes, error past 60 - one and four missed 15-minute
+batches):
+
+```bash
+dbt source freshness --project-dir dbt --profiles-dir dbt
+# 1 of 1 PASS freshness of silver.events
+```
+
 **Gold star schema**: 10,163 facts, 546 actors, 1,134 geographies, 150 event types,
 23 dates.
 

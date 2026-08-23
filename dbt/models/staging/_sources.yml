@@ -10,6 +10,7 @@ sources:
       the same models run against either.
     database: "{{ env_var('GDELT_SILVER_DB', 'lake') }}"
     schema: "{{ env_var('GDELT_SILVER_SCHEMA', 'gdelt') }}"
+    loaded_at_field: date_added
     tables:
       - name: events
         description: "Typed, deduped GDELT 2.0 events (grain: one global_event_id)."
@@ -17,3 +18,10 @@ sources:
           - name: global_event_id
             description: "GDELT's globally unique event id."
             data_tests: [not_null, unique]
+        # A row-level test can only see rows that landed. This catches the failure
+        # a row-level test cannot: nothing landing at all. GDELT publishes every 15
+        # minutes; warn past one missed batch, error past four (an hour of silence
+        # is the incremental DAG stuck or GDELT itself down, not normal jitter).
+        freshness:
+          warn_after: { count: 20, period: minute }
+          error_after: { count: 60, period: minute }

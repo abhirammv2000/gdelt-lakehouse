@@ -17,3 +17,8 @@ output "pipeline_role_arn" {
   description = "IAM role the pipeline compute assumes."
   value       = aws_iam_role.pipeline.arn
 }
+
+output "budget_name" {
+  description = "AWS Budgets monthly cap; check it in the Billing console to confirm the alert subscription took."
+  value       = aws_budgets_budget.monthly_cap.name
+}

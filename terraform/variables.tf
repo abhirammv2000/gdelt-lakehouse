@@ -38,3 +38,15 @@ variable "noncurrent_version_expiration_days" {
   type        = number
   default     = 30
 }
+
+variable "budget_limit_usd" {
+  description = "Monthly AWS cost cap. An email alert fires at 50% of actual spend and 100% of forecast spend."
+  type        = number
+  default     = 10
+}
+
+variable "budget_alert_email" {
+  description = "Email address that receives budget alerts. Required at apply time - AWS Budgets rejects an empty subscriber list, so leaving this unset fails the apply rather than silently creating a budget nobody is told about."
+  type        = string
+  default     = ""
+}

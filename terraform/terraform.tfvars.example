@@ -8,3 +8,8 @@ bucket_suffix = "123456789012"
 
 # dev convenience only - lets `terraform destroy` empty the buckets.
 force_destroy_buckets = true
+
+# Hard cost cap - required. An email alert fires at 50% of actual spend and
+# 100% of forecast spend for the month.
+budget_limit_usd    = 10
+budget_alert_email  = "you@example.com"

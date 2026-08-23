@@ -144,6 +144,7 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 | Bad data in a batch | Silver expectations name each violation and stop the write before the MERGE | `spark/tests/test_validate.py` |
 | Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers a bare 403 | FM-5 |
 | Out-of-order or replayed batch | The checkpoint is monotonic and never moves backwards | FM-6 |
+| Ingestion silently stops (no new rows land) | Row-level tests can't see a batch that never arrives; `dbt source freshness` checks the newest `date_added` in silver against a 20/60-minute warn/error window instead | `dbt source freshness`, verified locally: `1 of 1 PASS freshness of silver.events` |
 | Silver job re-run on same data | Recency-guarded MERGE leaves the table unchanged | Observed in the runs in the README; not automated |
 | Spark task fails in a DAG | Airflow retries with backoff, and the MERGE is safe to repeat | Not automated |
 | Catalog restart | SQLite on a volume (WAL + busy_timeout) survives; on AWS this is Glue | Not automated |
