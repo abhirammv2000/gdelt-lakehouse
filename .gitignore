@@ -64,3 +64,8 @@ derby.log
 Thumbs.db
 .idea/
 .vscode/
+
+# Benchmark scratch data (downloaded GDELT files, not source)
+spark/bench/data/
+spark/bench/tsv/
+spark/bench/results.txt

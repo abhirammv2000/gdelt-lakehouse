@@ -195,9 +195,11 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 
 ### Why Spark, when the data fits in memory?
 
-At the volume shown in the README (about 900 events per 15-minute batch, 10,163 rows
-total) Spark is the wrong tool and I would not defend it on performance. Most of the
-40 seconds is JVM startup. Pandas or DuckDB would finish in under a second.
+At the volume shown in the README Spark is the wrong tool and I would not defend it
+on performance. I benchmarked it rather than leaving that as an opinion: on the same
+transform over the same files, DuckDB is 54x faster at one batch and still 16x faster
+over a full day, and Spark's per-row cost is higher too, so the lines diverge instead
+of crossing. Full method and numbers in [BENCHMARK.md](BENCHMARK.md).
 
 Two reasons it is still here. First, the same job has to run over a backfill window as
 well as a single batch, and GDELT's full history is roughly 96 files a day going back
@@ -208,11 +210,12 @@ Spark: `MERGE INTO`, schema evolution, and the maintenance procedures
 elsewhere.
 
 The honest version of this trade-off: if I were running only the 15-minute incremental
-path in production, I would move it to DuckDB or Polars and keep Spark for backfills
-and compaction. The current design pays a fixed startup cost every 15 minutes to avoid
-maintaining two implementations, and at this volume that is a bad trade. It becomes a
-good trade somewhere around the point where a batch no longer fits comfortably on one
-machine.
+path in production, I would move it to DuckDB and keep Spark for backfills and
+compaction. The current design pays about 14 seconds of JVM start-up every 15 minutes
+to avoid maintaining two implementations, and at this volume that is a bad trade. It
+becomes a good trade somewhere around the point where a batch no longer fits
+comfortably on one machine, which is a memory and fault-tolerance question rather than
+a throughput one, and is not something the benchmark can answer.
 
 ### Why Kafka, when the source is a 15-minute batch feed?
 

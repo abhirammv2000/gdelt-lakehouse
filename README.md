@@ -161,6 +161,25 @@ events to Marquez, which records 12 jobs across the three DAGs with their run st
 <!-- ![gdelt_incremental DAG in Airflow](docs/images/airflow_dag.png) -->
 <!-- ![Job lineage in Marquez](docs/images/marquez_lineage.png) -->
 
+### Is Spark even the right tool here?
+
+Probably not, at this volume, and the numbers say so rather than my opinion. Running
+the same bronze-to-silver transform over the same files, one machine, median of three:
+
+| Input rows | DuckDB | Polars | PySpark |
+|---|---|---|---|
+| 2,278 (one 15-minute batch) | **0.26 s** | 0.40 s | 14.06 s |
+| 25,017 (six hours) | **0.98 s** | 1.99 s | 18.48 s |
+| 103,858 (one day) | **1.39 s** | 8.25 s | 22.49 s |
+
+![Engine benchmark](docs/images/benchmark_engines.png)
+
+Spark loses at every scale measured, with no crossover in sight: about 14 seconds of
+that is fixed JVM start-up, paid on every scheduled run. All three engines produce
+identical output row counts, which is the check that makes the comparison meaningful.
+Method, caveats, and what I would change are in
+[docs/BENCHMARK.md](docs/BENCHMARK.md).
+
 ### The failure modes are tested, not just claimed
 
 The failure-mode table in the design doc is backed by tests that trigger each
