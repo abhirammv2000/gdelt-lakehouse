@@ -28,6 +28,10 @@ A bronze / silver / gold medallion layout:
   weekly Iceberg maintenance DAG.
 - Lineage: Airflow emits OpenLineage events to Marquez.
 
+![Architecture: bronze, silver, gold, orchestrated by Airflow, with Marquez lineage](docs/images/architecture.png)
+
+Regenerate with `python scripts/plot_architecture.py`.
+
 ## Stack
 
 | Layer | Local | Cloud |
