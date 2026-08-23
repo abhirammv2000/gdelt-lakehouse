@@ -7,7 +7,6 @@
 # Service URLs (host):
 #   MinIO console      http://localhost:9001   (minioadmin / minioadmin)
 #   Iceberg REST       http://localhost:8181
-#   Redpanda Console   http://localhost:8080
 #   Airflow            http://localhost:8081   (admin / admin)
 #   Spark master UI    http://localhost:8082
 #   Spark / Jupyter    http://localhost:8888
@@ -40,8 +39,6 @@ x-airflow-common: &airflow-common
     GDELT_SILVER_BUCKET: gdelt-silver
     GDELT_ICEBERG_CATALOG_URI: http://iceberg-rest:8181
     GDELT_ICEBERG_WAREHOUSE: s3://gdelt-silver/warehouse
-    GDELT_KAFKA_BOOTSTRAP: redpanda:9092
-    GDELT_KAFKA_TOPIC: gdelt.events.raw
     # dbt (gold) config for in-container runs: MinIO host + a stable duckdb path.
     GDELT_DUCKDB_S3_ENDPOINT: minio:9000
     DBT_DUCKDB_PATH: /opt/airflow/dbt/gold.duckdb
@@ -159,78 +156,6 @@ services:
       - ./src:/opt/gdelt/src
     networks: [gdelt]
 
-  # -- Streaming (Phase 6 live event stream) -----------------------------------
-  redpanda:
-    image: redpandadata/redpanda:v24.1.9
-    command:
-      - redpanda
-      - start
-      - --smp=1
-      - --memory=1G
-      - --overprovisioned
-      - --node-id=0
-      - --check=false
-      - --kafka-addr=PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
-      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
-    ports:
-      - "19092:19092"   # Kafka API (host)
-      - "18081:8081"    # schema registry (listens on 8081 inside)
-      - "18082:8082"    # pandaproxy (listens on 8082 inside)
-    volumes:
-      - redpanda-data:/var/lib/redpanda/data
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    networks: [gdelt]
-
-  redpanda-console:
-    image: redpandadata/console:v2.6.0
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    environment:
-      KAFKA_BROKERS: redpanda:9092
-    ports:
-      - "8080:8080"
-    networks: [gdelt]
-
-  # Create the stream topics (raw is partitioned so keys distribute), then exit.
-  redpanda-setup:
-    image: redpandadata/redpanda:v24.1.9
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      rpk topic create gdelt.events.raw -p 3 --brokers redpanda:9092 2>/dev/null || true;
-      rpk topic create gdelt.events.dlq -p 1 --brokers redpanda:9092 2>/dev/null || true;
-      rpk topic create gdelt.events.alerts -p 1 --brokers redpanda:9092 2>/dev/null || true;
-      echo 'stream topics ready';
-      "
-    networks: [gdelt]
-
-  # Always-on stream processor: DQ-gate the raw topic, dead-letter + alert.
-  stream-consumer:
-    build:
-      context: .
-      dockerfile: docker/streaming/Dockerfile
-    image: gdelt/streaming:local
-    depends_on:
-      redpanda:
-        condition: service_healthy
-    environment:
-      GDELT_KAFKA_BOOTSTRAP: redpanda:9092
-      GDELT_KAFKA_TOPIC: gdelt.events.raw
-      GDELT_KAFKA_DLQ_TOPIC: gdelt.events.dlq
-      GDELT_KAFKA_ALERTS_TOPIC: gdelt.events.alerts
-      GDELT_KAFKA_CONSUMER_GROUP: gdelt-stream-consumer
-    volumes:
-      - ./src:/opt/gdelt/src
-    restart: unless-stopped
-    networks: [gdelt]
-
   # -- Lineage (OpenLineage -> Marquez) -----------------------------------------
   marquez-db:
     image: postgres:14
@@ -341,7 +266,6 @@ networks:
 
 volumes:
   minio-data:
-  redpanda-data:
   marquez-db-data:
   airflow-db-data:
   iceberg-catalog:

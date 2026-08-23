@@ -6,8 +6,8 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	 awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-install: ## Install the package with dev + spark + stream extras
-	pip install -e ".[dev,spark,stream]"
+install: ## Install the package with dev + spark extras
+	pip install -e ".[dev,spark]"
 	pre-commit install
 
 fmt: ## Auto-format code
@@ -24,7 +24,7 @@ test: ## Run the test suite with coverage
 build: ## Build the custom Airflow image
 	docker compose build
 
-up: ## Start the local stack (MinIO, Iceberg, Spark, Redpanda, Marquez, Airflow)
+up: ## Start the local stack (MinIO, Iceberg, Spark, Marquez, Airflow)
 	docker compose up -d
 
 down: ## Stop the local stack (add v=1 to also drop volumes: make down v=1)

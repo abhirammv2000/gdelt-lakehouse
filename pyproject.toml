@@ -24,9 +24,6 @@ spark = [
     "pyspark==3.5.1",
     "openlineage-python>=1.18",
 ]
-stream = [
-    "confluent-kafka>=2.5",
-]
 dbt = [
     "dbt-duckdb>=1.9",        # local gold: dbt models over the Iceberg silver table
     "duckdb>=1.4",            # reads the Iceberg REST catalog on MinIO
@@ -76,7 +73,7 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # These ship no type stubs (no py.typed marker).
-module = ["fsspec", "fsspec.*", "s3fs", "s3fs.*", "confluent_kafka", "confluent_kafka.*"]
+module = ["fsspec", "fsspec.*", "s3fs", "s3fs.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

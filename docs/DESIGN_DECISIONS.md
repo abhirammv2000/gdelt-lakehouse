@@ -10,16 +10,15 @@ GDELT 2.0 publishes a batch of world-news events every 15 minutes. The files are
 tab-delimited, have no header, and carry 61 fixed columns, with plenty of nulls,
 CAMEO codes, and encoding quirks. It is a good dataset to build on because it is
 messy and always arriving, so it needs real incremental ingestion, idempotency,
-schema handling, data quality, and streaming rather than a one-off load. One row
-is one event.
+schema handling, and data quality rather than a one-off load. One row is one event.
 
 ## 2. Architecture
 
 Ingest (Python) -> bronze (raw zips in S3/MinIO) -> PySpark -> silver (Iceberg,
 typed and deduped) -> dbt -> gold (star schema in DuckDB or BigQuery). Airflow runs
-the schedule, a Kafka/Redpanda path runs off ingestion for the streaming side, and
-Marquez collects lineage. Moving to AWS is a change of configuration, not code:
-real S3 endpoints and the Glue catalog in place of MinIO and the REST catalog.
+the schedule and Marquez collects lineage. Moving to AWS is a change of
+configuration, not code: real S3 endpoints and the Glue catalog in place of MinIO
+and the REST catalog.
 
 The layers follow the medallion pattern. Bronze is the raw feed, unchanged. Silver
 is typed, cleaned, and deduped. Gold is modeled for querying. Keeping them separate
@@ -120,19 +119,6 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   don't clash with Airflow's. Each step is easy to swap later:
   `SparkKubernetesOperator` or `EmrAddStepsOperator` for Spark, MWAA for Airflow.
 
-### Streaming: Kafka/Redpanda
-- The producer sends a landed batch to `gdelt.events.raw`, one message per event,
-  keyed by country so events for a place land on the same partition, with an
-  idempotent `acks=all` producer. A long-running consumer reads it as a consumer
-  group with manual offset commits (at-least-once), runs the per-event checks,
-  sends failures to a dead-letter topic, and sends high-impact conflict events to an
-  alerts topic.
-- It is a separate path from the batch pipeline so the streaming pieces are real:
-  partitions, consumer groups, offsets, a dead-letter queue, and routing.
-- Trade-off: JSON on the wire, which is easy to read and needs few dependencies.
-  For production I would switch to Avro with a Schema Registry (Redpanda ships one,
-  and the port is already wired).
-
 ### Infrastructure, CI, lineage
 - Terraform creates versioned, encrypted S3 buckets (public access blocked, old
   versions expired), a Glue database for the Iceberg catalog, and an IAM role scoped
@@ -155,12 +141,11 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 | Ingest crashes mid-batch | Existence checks skip what landed, so a re-run fetches only what is missing | FM-2 |
 | A few malformed rows | Separated by the field-count check and quarantined; good rows still load | FM-3 |
 | GDELT changes its column layout | A real extra column is flagged while the historical trailing tab is not; above the malformed-rate threshold the job stops before writing | FM-4, `spark/tests` |
-| Bad data in a batch | Silver expectations stop the write before the MERGE; the stream gate names each violation so the consumer dead-letters it | FM-5, `spark/tests/test_validate.py` |
-| Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers a bare 403 | FM-6 |
-| Out-of-order or replayed batch | The checkpoint is monotonic and never moves backwards | FM-7 |
+| Bad data in a batch | Silver expectations name each violation and stop the write before the MERGE | `spark/tests/test_validate.py` |
+| Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers a bare 403 | FM-5 |
+| Out-of-order or replayed batch | The checkpoint is monotonic and never moves backwards | FM-6 |
 | Silver job re-run on same data | Recency-guarded MERGE leaves the table unchanged | Observed in the runs in the README; not automated |
 | Spark task fails in a DAG | Airflow retries with backoff, and the MERGE is safe to repeat | Not automated |
-| Consumer crashes | Offsets are committed only after handling, so messages are redelivered | Not automated |
 | Catalog restart | SQLite on a volume (WAL + busy_timeout) survives; on AWS this is Glue | Not automated |
 
 ## 5. Scaling
@@ -172,17 +157,12 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 - Slow backfill (the masterfilelist scan): cache or index the list, or list by date.
 - One Spark container: submit to a real cluster (EMR or Kubernetes); the DAG's Spark
   step is already isolated for that swap.
-- Stream throughput: add topic partitions and more consumers in the group; the
-  country key already supports spreading the load.
 - DuckDB is single-node: the BigQuery target handles concurrent querying at scale.
 
 ## 6. What it does not do yet
 
 - `dim_geography` and `dim_cameo_event` are Type-1, so they keep no history. That is
   fine for reference data that rarely changes; `dim_actor` already keeps history.
-- Streaming is at-least-once, not exactly-once. The dead-letter/alerts writes are not
-  in the same transaction as the offset commit, so a crash can re-emit a message.
-  Kafka transactions or an idempotent sink would fix that.
 - The gold models have been run on DuckDB (local) and BigQuery (`--target bq`). A
   Snowflake target would follow the same adapter-dispatch pattern but is not wired
   yet.
@@ -217,24 +197,31 @@ becomes a good trade somewhere around the point where a batch no longer fits
 comfortably on one machine, which is a memory and fault-tolerance question rather than
 a throughput one, and is not something the benchmark can answer.
 
-### Why Kafka, when the source is a 15-minute batch feed?
+### Why is there no Kafka, when this used to have one?
 
-The batch pipeline does not need it, and this is the component I would cut first.
-GDELT publishes on a fixed 15-minute cadence, so there is no continuous stream to
-consume. What arrives is a file, and treating it as a stream is a choice, not a
-requirement.
+There was one. A Kafka/Redpanda path ran alongside the batch pipeline: a producer
+published each landed batch to a topic keyed by country, and a long-running consumer
+group applied a per-event quality gate, dead-lettered what failed, and routed
+high-impact conflict events to an alerts topic. It exercised the parts of streaming
+that actually matter - partitions, consumer groups, manual offset commits, a
+dead-letter queue - not just a producer and a `print`.
 
-What the streaming path does earn: the consumer applies a per-event quality gate,
-dead-letters what fails, and routes high-impact conflict events to an alerts topic.
-If something downstream needs to react to an individual event rather than wait for the
-next warehouse build, a topic decouples that consumer from the pipeline better than
-polling gold on a schedule. That is a real pattern, and the implementation exercises
-the parts that matter: keyed partitioning so one country's events stay ordered,
-a consumer group with manual offset commits, and a dead-letter topic.
+I removed it. GDELT publishes on a fixed 15-minute cadence, so there is no
+continuous stream to consume; what arrives is a file, and treating it as a stream
+was a choice, not a requirement. The batch pipeline never depended on it - it was
+always a parallel path, correct with the streaming stack turned off - and the one
+thing that would have justified keeping it, the alerts topic, had no consumer
+reacting to it. That is the definition of dead weight: a service running in Docker
+Compose and a DAG task on every 15-minute schedule, in exchange for nothing anyone
+downstream used. Calling it "real-time" would have been a stretch anyway - the
+freshest an event could be was however long ago GDELT published, which averages 7.5
+minutes - so it was not even buying the thing streaming is usually for.
 
-But it is a parallel path, not a dependency. The batch pipeline is correct with the
-streaming stack turned off. Calling this "real-time" would be a stretch: the freshest
-an event can be is however long ago GDELT published, which averages 7.5 minutes.
+The honest alternative was giving the alerts topic a real subscriber - write matched
+events somewhere a person or a downstream job actually reads. I chose to cut it
+instead, because inventing a consumer just to justify keeping the producer would
+have been the same problem in a different shape: a feature that exists to look
+complete rather than because something needs it.
 
 ### What would break first at 100x?
 

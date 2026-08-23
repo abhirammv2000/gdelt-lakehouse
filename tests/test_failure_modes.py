@@ -27,7 +27,6 @@ from gdelt_pipeline.config import Settings
 from gdelt_pipeline.ingestion.checkpoint import Checkpoint
 from gdelt_pipeline.ingestion.service import IngestService
 from gdelt_pipeline.schema.events import EXPECTED_COLUMN_COUNT
-from gdelt_pipeline.streaming.dq import is_high_impact, validate_event
 
 BASE = "http://data.gdeltproject.org/gdeltv2"
 
@@ -193,48 +192,10 @@ def test_fm4_phantom_column_detected_and_trailing_tab_is_not() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FM-5  The per-event stream gate names every violation, and alerts still route.
-# ---------------------------------------------------------------------------
-def test_fm5_stream_gate_flags_bad_events_and_routes_alerts() -> None:
-    clean = {
-        "global_event_id": 1,
-        "event_day": "2026-08-22",
-        "quad_class": 1,
-        "goldstein_scale": 2.0,
-        "avg_tone": -1.0,
-        "action_lat": 10.0,
-        "action_long": 20.0,
-    }
-    assert validate_event(clean) == []
-
-    corrupt = {
-        "global_event_id": None,
-        "event_day": None,
-        "quad_class": 9,
-        "goldstein_scale": -99.0,
-        "avg_tone": 500.0,
-        "action_lat": 91.0,
-        "action_long": 181.0,
-    }
-    assert set(validate_event(corrupt)) == {
-        "global_event_id_missing",
-        "event_day_missing",
-        "quad_class_out_of_range",
-        "goldstein_out_of_range",
-        "avg_tone_out_of_range",
-        "action_lat_out_of_range",
-        "action_long_out_of_range",
-    }
-
-    assert is_high_impact({**clean, "goldstein_scale": -9.0}) is True
-    assert is_high_impact(clean) is False
-
-
-# ---------------------------------------------------------------------------
-# FM-6  The region reaches fsspec even with no endpoint or explicit credentials.
+# FM-5  The region reaches fsspec even with no endpoint or explicit credentials.
 #       Without it s3fs signs for us-east-1 and another region answers a bare 403.
 # ---------------------------------------------------------------------------
-def test_fm6_region_is_always_passed_to_fsspec() -> None:
+def test_fm5_region_is_always_passed_to_fsspec() -> None:
     # _env_file=None keeps a developer's local .env out of the assertion, so this
     # tests the code rather than whatever happens to be configured on the machine.
     aws = Settings(_env_file=None, env="aws", s3_endpoint_url=None, s3_region="us-east-2")
@@ -257,9 +218,9 @@ def test_fm6_region_is_always_passed_to_fsspec() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FM-7  The checkpoint is monotonic: a replayed batch cannot move it backwards.
+# FM-6  The checkpoint is monotonic: a replayed batch cannot move it backwards.
 # ---------------------------------------------------------------------------
-def test_fm7_checkpoint_never_moves_backwards(settings: Settings, moto_endpoint: str) -> None:
+def test_fm6_checkpoint_never_moves_backwards(settings: Settings, moto_endpoint: str) -> None:
     _make_bucket(moto_endpoint, "fm-bronze")
     cp = Checkpoint(settings)
 

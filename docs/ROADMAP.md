@@ -10,8 +10,12 @@ Built in verifiable increments - each phase runs and is tested before the next.
 | **3** | PySpark bronze->silver: parse 61-col schema, type/clean/dedup, write **Iceberg** table + data-quality gate | done |
 | **4** | dbt gold layer: star schema (`fact_events` + `dim_actor`/`dim_geography`/`dim_date`/`dim_cameo_event`), tests, docs | done |
 | **5** | Airflow DAGs: 15-min incremental + parameterized backfill, wiring ingest->spark->dbt with retries/SLAs | done |
-| **6** | Data quality gates + streaming: Kafka/Redpanda producer & consumer for the live event stream | done |
+| **6** | Data quality gates + streaming: Kafka/Redpanda producer & consumer for the live event stream | done, later removed |
 | **7** | Terraform (AWS: S3, Glue/Iceberg, IAM), GitHub Actions CI, OpenLineage observability, polished README | done |
+
+Phase 6's streaming half was built, ran, and was then deliberately removed: the
+batch pipeline never depended on it and its one real payoff, the alerts topic, had
+no consumer. Why, in [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md#why-is-there-no-kafka-when-this-used-to-have-one).
 
 ## Design principles
 

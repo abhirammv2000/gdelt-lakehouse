@@ -26,9 +26,6 @@ A bronze / silver / gold medallion layout:
   locally and on BigQuery (`dbt build --target bq`).
 - Orchestration (Airflow): a 15-minute incremental DAG, a backfill DAG, and a
   weekly Iceberg maintenance DAG.
-- Streaming (Kafka/Redpanda): a producer publishes each batch to a topic; a
-  consumer validates each event and routes bad or high-impact records to separate
-  topics.
 - Lineage: Airflow emits OpenLineage events to Marquez.
 
 ## Stack
@@ -41,7 +38,6 @@ A bronze / silver / gold medallion layout:
 | Warehouse | DuckDB | Athena (AWS) or BigQuery |
 | Transform | dbt | dbt |
 | Orchestration | Airflow | Airflow (MWAA not run) |
-| Streaming | Redpanda | Kafka (not run) |
 | Infrastructure | Docker Compose | Terraform (S3, Glue, IAM) |
 
 Everything in the Local column runs with `make up`. The whole pipeline has also been
@@ -50,10 +46,10 @@ writing Iceberg through the Glue catalog, and the dbt gold models built by Athen
 reading that same Glue table, so gold is created in place with no data movement. The
 same models also build on BigQuery (`--target bq`).
 
-Two honest limits. Spark, dbt, and Airflow run as local processes pointed at AWS
+One honest limit. Spark, dbt, and Airflow run as local processes pointed at AWS
 rather than on EMR and MWAA, which are a deployment target rather than a code change
-but have not been run. Managed Kafka has not been run either. The AWS resources are
-created with Terraform and destroyed after each run, so nothing is standing.
+but have not been run. The AWS resources are created with Terraform and destroyed
+after each run, so nothing is standing.
 
 ## Results
 
@@ -151,8 +147,8 @@ Athena. The dialect differences (hashing, date formatting, incremental strategy)
 through adapter-dispatched macros in `dbt/macros/`.
 
 **Orchestration and lineage.** The `gdelt_incremental` DAG runs ingest, bronze to
-silver, and dbt build, with the stream publish in parallel. Airflow emits OpenLineage
-events to Marquez, which records 12 jobs across the three DAGs with their run states.
+silver, and dbt build in sequence. Airflow emits OpenLineage events to Marquez, which
+records each task across the three DAGs as a job with its run states.
 
 <!-- Screenshots: run `make up`, open the two URLs below, and save the images to these
      paths, then delete this comment and uncomment the two lines under it.
@@ -190,7 +186,7 @@ historical trailing tab that must *not* be mistaken for one), a replayed batch
 that tries to move the checkpoint backwards.
 
 ```bash
-pytest tests/test_failure_modes.py     # 7 passed
+pytest tests/test_failure_modes.py     # 6 passed
 ```
 
 These run in CI on every push. Four rows in that table have no automated proof and
@@ -230,7 +226,6 @@ dbt build --target bq --project-dir dbt --profiles-dir dbt
 |---|---|---|
 | Airflow | http://localhost:8081 | admin / admin |
 | MinIO console | http://localhost:9001 | minioadmin / minioadmin |
-| Redpanda Console | http://localhost:8080 | |
 | Spark UI | http://localhost:8082 | |
 | Marquez (lineage) | http://localhost:3000 | |
 | Iceberg REST catalog | http://localhost:8181 | |
@@ -238,7 +233,7 @@ dbt build --target bq --project-dir dbt --profiles-dir dbt
 ## Repository layout
 
 ```
-src/gdelt_pipeline/   Python package: config, schema, ingestion CLI, streaming
+src/gdelt_pipeline/   Python package: config, schema, ingestion CLI
 spark/                PySpark bronze-to-silver job and unit tests
 dbt/                  gold star schema (models, seeds, snapshots, tests)
 airflow/dags/         incremental, backfill, and maintenance DAGs

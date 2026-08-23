@@ -6,9 +6,6 @@ apache-airflow-providers-openlineage
 # (production would swap this for SparkKubernetesOperator / EmrAddStepsOperator).
 docker
 
-# The publish_stream task fans the landed batch out onto Kafka/Redpanda.
-confluent-kafka
-
 # gdelt_pipeline runtime dependencies - the package is mounted, not installed,
 # so its deps must be present in the image. Mirrors [project.dependencies].
 httpx
