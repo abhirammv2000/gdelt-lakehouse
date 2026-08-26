@@ -21,8 +21,10 @@ log = get_logger(__name__)
 
 class Checkpoint:
     def __init__(self, settings: Settings) -> None:
-        self._uri = f"s3://{settings.bronze_bucket}/_meta/checkpoint.json"
-        self._fs: fsspec.AbstractFileSystem = fsspec.filesystem("s3", **settings.storage_options)
+        self._uri = settings.lake_uri(settings.bronze_bucket, "_meta", "checkpoint.json")
+        self._fs: fsspec.AbstractFileSystem = fsspec.filesystem(
+            settings.lake_protocol, **settings.storage_options
+        )
 
     def _load(self) -> dict[str, str]:
         if not self._fs.exists(self._uri):
