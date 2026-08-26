@@ -13,7 +13,7 @@ import argparse
 import os
 import sys
 
-from gdelt_spark.read import S3Location, read_bronze
+from gdelt_spark.read import AdlsLocation, S3Location, read_bronze
 from gdelt_spark.session import CatalogConfig, build_spark
 from gdelt_spark.silver_table import rejects_table_name, write_rejects, write_silver
 from gdelt_spark.transform import to_silver
@@ -32,9 +32,25 @@ def _env_or_none(name: str) -> str | None:
     return os.environ.get(name) or None
 
 
-def _s3_location() -> S3Location:
+def _bronze_location() -> S3Location | AdlsLocation:
+    """Where bronze lives, and therefore how it gets read.
+
+    GDELT_BRONZE_BUCKET names an S3 bucket or an ADLS container depending on
+    GDELT_ENV; both are just "the bronze layer" to everything downstream.
+    """
+    bucket = os.environ.get("GDELT_BRONZE_BUCKET", "gdelt-bronze")
+
+    if os.environ.get("GDELT_ENV") == "azure":
+        account = os.environ.get("GDELT_AZURE_STORAGE_ACCOUNT")
+        if not account:
+            raise ValueError(
+                "GDELT_ENV=azure requires GDELT_AZURE_STORAGE_ACCOUNT. "
+                "`terraform output -raw storage_account` prints it."
+            )
+        return AdlsLocation(account=account, container=bucket)
+
     return S3Location(
-        bucket=os.environ.get("GDELT_BRONZE_BUCKET", "gdelt-bronze"),
+        bucket=bucket,
         endpoint_url=_env_or_none("GDELT_S3_ENDPOINT_URL"),
         access_key=_env_or_none("GDELT_S3_ACCESS_KEY"),
         secret_key=_env_or_none("GDELT_S3_SECRET_KEY"),
@@ -68,8 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     spark = build_spark("gdelt-bronze-to-silver", catalog)
     spark.sparkContext.setLogLevel("WARN")
 
-    loc = _s3_location()
-    print(f"[bronze->silver] reading s3://{loc.bucket}/{prefix}")
+    loc = _bronze_location()
+    source = loc.base_url if isinstance(loc, AdlsLocation) else f"s3://{loc.bucket}"
+    print(f"[bronze->silver] reading {source}/{prefix}")
     raw = read_bronze(spark, loc, prefix).cache()
     total = raw.count()
     if total == 0:

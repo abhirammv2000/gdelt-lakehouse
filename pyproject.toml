@@ -52,7 +52,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gdelt_pipeline"]
+# Both packages ship in the wheel because the wheel is the deployable artifact.
+# Databricks installs it on the cluster and the Spark job imports gdelt_spark
+# from it; locally the Spark container gets the same code on PYTHONPATH. Keeping
+# gdelt_spark out would mean the thing that runs on Databricks is assembled
+# differently from the thing that is tested.
+packages = ["src/gdelt_pipeline", "spark/gdelt_spark"]
 
 [tool.ruff]
 line-length = 100

@@ -1,11 +1,20 @@
-"""Read zipped GDELT export CSVs from the bronze bucket into a raw-string frame.
+"""Read zipped GDELT export CSVs from the bronze layer into a raw-string frame.
 
 GDELT ships ``*.CSV.zip`` (tab-delimited, no header, 61 columns). Spark's CSV
-reader can't see inside a zip, and this image has no ``s3a`` filesystem, so we:
+reader cannot see inside a zip either way, but how the bytes are reached differs
+by platform, and the difference is not cosmetic:
 
-  1. list the bronze objects with boto3 (driver side),
-  2. parallelize the keys and fetch+unzip each on the executors,
-  3. build a DataFrame of 61 string columns (+ ``_source_file``).
+  * S3 / MinIO (``S3Location``): the local Spark image has no ``s3a`` filesystem,
+    so objects are listed with boto3 on the driver, then the keys are
+    parallelized and each is fetched and unzipped on an executor.
+
+  * ADLS Gen2 (``AdlsLocation``): Databricks Runtime ships the ABFS driver and
+    the cluster already holds the Unity Catalog credential, so Spark reads the
+    files itself with the ``binaryFile`` source. No SDK, no credentials in the
+    closure, and the listing is distributed rather than a driver-side paginate.
+
+Both end up at the same place: a DataFrame of 61 string columns plus
+``_source_file``, ``_field_count``, and ``_raw_line``.
 
 Row parsing and the 61-field contract check live in
 ``gdelt_pipeline.schema.parse``; this module is only the Spark plumbing.
@@ -28,7 +37,13 @@ from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 # where the Spark side of the job reaches for it.
 from gdelt_pipeline.schema.parse import records_from_zip
 
-__all__ = ["S3Location", "read_bronze", "list_bronze_keys", "records_from_zip"]
+__all__ = [
+    "AdlsLocation",
+    "S3Location",
+    "list_bronze_keys",
+    "read_bronze",
+    "records_from_zip",
+]
 
 
 @dataclass(frozen=True)
@@ -51,6 +66,24 @@ class S3Location:
             aws_secret_access_key=self.secret_key,
             region_name=self.region,
         )
+
+
+@dataclass(frozen=True)
+class AdlsLocation:
+    """Bronze in ADLS Gen2, read through Spark's own ABFS driver.
+
+    Deliberately carries no credentials. On Databricks the cluster is already
+    authorized for this container through the Unity Catalog storage credential
+    backed by the access connector, so putting a key in here would both be
+    unnecessary and ship a secret to every executor.
+    """
+
+    account: str
+    container: str
+
+    @property
+    def base_url(self) -> str:
+        return f"abfss://{self.container}@{self.account}.dfs.core.windows.net"
 
 
 def _raw_schema() -> StructType:
@@ -79,13 +112,41 @@ def _fetch_and_unzip(key: str, loc: S3Location) -> Iterator[tuple[str | None, ..
     yield from records_from_zip(source_file, body)
 
 
-def read_bronze(spark: SparkSession, loc: S3Location, prefix: str) -> DataFrame:
+def read_bronze(
+    spark: SparkSession, loc: S3Location | AdlsLocation, prefix: str
+) -> DataFrame:
     """Return a raw-string DataFrame for every ``*.CSV.zip`` under ``prefix``."""
+    if isinstance(loc, AdlsLocation):
+        return _read_bronze_adls(spark, loc, prefix)
+
     keys = list_bronze_keys(loc, prefix)
     if not keys:
         return spark.createDataFrame([], _raw_schema())
     slices = min(len(keys), 16)
     rdd = spark.sparkContext.parallelize(keys, numSlices=slices).flatMap(
         lambda key: _fetch_and_unzip(key, loc)
+    )
+    return spark.createDataFrame(rdd, _raw_schema())
+
+
+def _read_bronze_adls(spark: SparkSession, loc: AdlsLocation, prefix: str) -> DataFrame:
+    """Read bronze zips with Spark's binaryFile source.
+
+    ``pathGlobFilter`` restricts to the zips while ``recursiveFileLookup`` walks
+    the dt=/hour= partition directories, so the prefix stays a plain path rather
+    than something that has to encode the partition depth.
+    """
+    files = (
+        spark.read.format("binaryFile")
+        .option("pathGlobFilter", "*.CSV.zip")
+        .option("recursiveFileLookup", "true")
+        .load(f"{loc.base_url}/{prefix}")
+        .select("path", "content")
+    )
+    if files.isEmpty():
+        return spark.createDataFrame([], _raw_schema())
+
+    rdd = files.rdd.flatMap(
+        lambda row: records_from_zip(row.path.rsplit("/", 1)[-1], row.content)
     )
     return spark.createDataFrame(rdd, _raw_schema())
