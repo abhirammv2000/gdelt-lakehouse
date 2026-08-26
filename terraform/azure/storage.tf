@@ -61,10 +61,15 @@ resource "azurerm_storage_account" "lake" {
   shared_access_key_enabled       = true # Local Spark authenticates with an account key.
 
   blob_properties {
-    # Keep object history, supporting the same time-travel and reproducibility
-    # story as S3 versioning on the AWS side.
-    versioning_enabled = true
-
+    # No versioning_enabled here. Azure does not support blob versioning on an
+    # account with a hierarchical namespace, full stop - Terraform will not even
+    # apply the two together. That is the one place this account cannot mirror
+    # the "keep object history" story the AWS S3 buckets tell with versioning.
+    #
+    # Soft delete is the substitute, and it is a real substitute, not a shrug: it
+    # recovers an overwritten or deleted blob within blob_retention_days. What it
+    # does not give back is full version history the way S3 versioning or
+    # Iceberg's own snapshots do - only the most recent prior state, not every one.
     delete_retention_policy {
       days = var.blob_retention_days
     }
@@ -89,27 +94,14 @@ resource "azurerm_storage_container" "layer" {
   container_access_type = "private"
 }
 
-# Expire previous blob versions so the lake does not grow without bound. The
-# Azure counterpart of the S3 noncurrent-version expiry lifecycle rule.
-resource "azurerm_storage_management_policy" "lake" {
-  storage_account_id = azurerm_storage_account.lake.id
-
-  rule {
-    name    = "expire-old-versions"
-    enabled = true
-
-    filters {
-      blob_types = ["blockBlob"]
-    }
-
-    actions {
-      version {
-        delete_after_days_since_creation = var.blob_retention_days
-      }
-
-      base_blob {
-        delete_after_days_since_modification_greater_than = var.blob_retention_days
-      }
-    }
-  }
-}
+# No lifecycle rule here expiring "old versions", on purpose. Without blob
+# versioning (see the note in blob_properties above) there is no separate
+# noncurrent-version state to expire - only current, live blobs exist. A rule
+# that deletes a blob N days after its last modification, which is what the S3
+# noncurrent-version-expiration pattern would naively become here, would delete
+# live bronze and silver data instead of an old copy of it. That is a
+# correctness bug, not a cost optimization, so it is not written.
+#
+# The real Azure counterpart of the S3 lifecycle rule is soft delete
+# (delete_retention_policy above), which recovers what was actually deleted
+# rather than pruning what is still live.

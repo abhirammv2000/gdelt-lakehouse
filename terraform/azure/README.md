@@ -11,12 +11,23 @@ stands up what that configuration points at on Azure.
 | `azurerm_resource_group` | One group holding everything, so teardown is a single delete |
 | `azurerm_storage_account` (ADLS Gen2) | The lake. `is_hns_enabled = true` is the flag that makes it ADLS Gen2 rather than flat blob storage: real directories and atomic renames, which Spark and Delta commit protocols depend on |
 | `azurerm_storage_container` bronze / silver | The medallion layers, matching the S3 bucket layout on the AWS side |
-| `azurerm_storage_management_policy` | Expires old blob versions, the counterpart of the S3 noncurrent-version lifecycle rule |
 | `azurerm_databricks_workspace` | Compute and warehouse. Replaces the EMR-plus-Athena pair with one service that runs both the PySpark silver job and the SQL warehouse dbt builds gold on |
-| `azurerm_role_assignment` x2 | Least-privilege data access for the operator identity and the workspace identity, scoped to the storage account |
+| `azurerm_databricks_access_connector` | The managed identity Unity Catalog actually uses to reach external storage - not the workspace's own identity, which only exists for the workspace's internal DBFS storage and has no bearing on this lake |
+| `azurerm_role_assignment` x2 | Least-privilege data access for the operator identity and the access connector's identity, scoped to the storage account |
 | `azurerm_consumption_budget_subscription` | Hard cost cap with alerts at 50%, 80%, and 100% of forecast |
 
-## Two things that differ from the AWS module
+## Three things that differ from the AWS module
+
+**No blob versioning.** Azure does not support blob versioning on a storage
+account with a hierarchical namespace enabled, which is not optional here; ADLS
+Gen2 requires that namespace. Terraform refuses to apply the two settings
+together. Soft delete (`delete_retention_policy`) is the real substitute: it
+recovers a blob within `blob_retention_days` of being deleted or overwritten,
+but it is not full version history the way S3 versioning or Iceberg's own
+snapshots are - only the single most recent prior state, not every one. There
+is deliberately no lifecycle rule pretending to expire "old versions" either;
+without a noncurrent-version concept, a rule like that would delete live data
+on a schedule instead of pruning history.
 
 **Control plane and data plane are separate in Azure RBAC.** Owning a storage
 account does not let you read the blobs inside it. Data access needs an explicit

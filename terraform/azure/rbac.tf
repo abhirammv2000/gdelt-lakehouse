@@ -17,11 +17,11 @@ resource "azurerm_role_assignment" "operator_lake_data" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-# The Databricks workspace's managed identity needs the same data access so
-# clusters can read bronze and write silver Delta tables without an account key
-# baked into a notebook.
+# Databricks reaches external storage through the access connector's identity,
+# not the workspace's own, so this needs the same data access to read bronze and
+# write silver Delta tables without an account key baked into a notebook.
 resource "azurerm_role_assignment" "databricks_lake_data" {
   scope                = azurerm_storage_account.lake.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_databricks_workspace.lakehouse.storage_account_identity[0].principal_id
+  principal_id         = azurerm_databricks_access_connector.lakehouse.identity[0].principal_id
 }

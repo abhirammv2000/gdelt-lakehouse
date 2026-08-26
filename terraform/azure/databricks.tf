@@ -23,3 +23,27 @@ resource "azurerm_databricks_workspace" "lakehouse" {
     ManagedBy   = "terraform"
   }
 }
+
+# The workspace's own identity has nothing to do with reading the lake. It only
+# appears at all when the workspace's managed DBFS storage uses customer-managed
+# keys, and even then it authorizes access to Databricks' own storage, not to
+# anything external. The identity Unity Catalog actually uses to reach external
+# storage like this project's bronze and silver containers is a separate,
+# dedicated resource: an access connector. This is the identity rbac.tf grants
+# Storage Blob Data Contributor to, and the one a Unity Catalog storage
+# credential and external location would be built against.
+resource "azurerm_databricks_access_connector" "lakehouse" {
+  name                = "${var.project_name}-${var.environment}-access-connector"
+  resource_group_name = azurerm_resource_group.lakehouse.name
+  location            = azurerm_resource_group.lakehouse.location
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}

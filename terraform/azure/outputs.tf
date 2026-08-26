@@ -23,6 +23,11 @@ output "databricks_host" {
   value       = "https://${azurerm_databricks_workspace.lakehouse.workspace_url}"
 }
 
+output "access_connector_id" {
+  description = "Resource ID of the Databricks access connector. This is what a Unity Catalog storage credential references, not the workspace itself, to reach the bronze and silver containers."
+  value       = azurerm_databricks_access_connector.lakehouse.id
+}
+
 output "budget_name" {
   description = "Subscription cost cap; confirm the alert contact in Cost Management after apply."
   value       = azurerm_consumption_budget_subscription.monthly_cap.name
