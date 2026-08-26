@@ -13,9 +13,9 @@ import argparse
 import os
 import sys
 
-from gdelt_spark.iceberg import rejects_table_name, write_rejects, write_silver
 from gdelt_spark.read import S3Location, read_bronze
 from gdelt_spark.session import CatalogConfig, build_spark
+from gdelt_spark.silver_table import rejects_table_name, write_rejects, write_silver
 from gdelt_spark.transform import to_silver
 from gdelt_spark.validate import SILVER_EXPECTATIONS, run_suite
 from pyspark.sql import functions as F
@@ -64,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     prefix = args.prefix if args.prefix is not None else f"{args.feed}/"
 
-    spark = build_spark("gdelt-bronze-to-silver", CatalogConfig.from_env())
+    catalog = CatalogConfig.from_env()
+    spark = build_spark("gdelt-bronze-to-silver", catalog)
     spark.sparkContext.setLogLevel("WARN")
 
     loc = _s3_location()
@@ -93,7 +94,13 @@ def main(argv: list[str] | None = None) -> int:
     if malformed:
         dist = {r["_field_count"]: r["count"] for r in rejects.groupBy("_field_count").count().collect()}
         print(f"[bronze->silver] non-conformant field-count distribution: {dist}")
-        write_rejects(spark, rejects, rejects_table_name(args.table), EXPECTED_COLUMN_COUNT)
+        write_rejects(
+            spark,
+            rejects,
+            rejects_table_name(args.table),
+            EXPECTED_COLUMN_COUNT,
+            catalog.table_format,
+        )
         print(f"[bronze->silver] quarantined {malformed} rows to {rejects_table_name(args.table)}")
 
     if rate > args.max_malformed_rate:
@@ -111,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     print(suite.summary())
     suite.raise_for_errors()  # aborts before writing if any error-severity rule failed
 
-    write_silver(spark, silver, args.table)
+    write_silver(spark, silver, args.table, catalog.table_format)
     table_count = spark.table(args.table).count()
     print(f"[bronze->silver] merged into {args.table}; table now holds {table_count} events")
 

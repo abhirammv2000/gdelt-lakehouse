@@ -1,13 +1,21 @@
-"""Build a SparkSession wired to the Iceberg catalog.
+"""Build a SparkSession wired to the table catalog.
 
-Two catalog backends, selected by ``GDELT_ICEBERG_CATALOG_TYPE``:
+Three backends, selected by ``GDELT_ICEBERG_CATALOG_TYPE``:
 
-  - ``rest``  (local)  the Iceberg REST fixture, with data in MinIO.
-  - ``glue``  (AWS)    the Glue Data Catalog, with data in S3.
+  - ``rest``        (local)  the Iceberg REST fixture, with data in MinIO.
+  - ``glue``        (AWS)    the Glue Data Catalog, with data in S3.
+  - ``databricks``  (Azure)  Unity Catalog and Delta, with data in ADLS Gen2.
 
-Either way only Iceberg's ``S3FileIO`` handles table data (shipped in the base
-image's iceberg-aws-bundle) - no ``hadoop-aws``/``s3a`` filesystem is required,
-because bronze objects are fetched with boto3 (see ``read.py``), not Spark's FS.
+For the two Iceberg backends only Iceberg's ``S3FileIO`` handles table data
+(shipped in the base image's iceberg-aws-bundle) - no ``hadoop-aws``/``s3a``
+filesystem is required, because bronze objects are fetched with boto3 (see
+``read.py``), not Spark's FS.
+
+Databricks is the odd one out and deliberately configures nothing. The runtime
+already wires Delta, Unity Catalog, and ABFS credential passthrough before user
+code runs, and overriding any of it from here fights the platform rather than
+configuring it. That asymmetry is the honest shape of the problem: on AWS this
+project assembles a lakehouse from parts, and on Azure it rents one.
 """
 
 from __future__ import annotations
@@ -17,15 +25,29 @@ from dataclasses import dataclass
 
 from pyspark.sql import SparkSession
 
+ICEBERG = "iceberg"
+DELTA = "delta"
+
 
 @dataclass(frozen=True)
 class CatalogConfig:
     name: str = "lakehouse"
-    catalog_type: str = "rest"  # "rest" (local fixture) | "glue" (AWS Glue)
+    # "rest" (local fixture) | "glue" (AWS Glue) | "databricks" (Unity Catalog)
+    catalog_type: str = "rest"
     rest_uri: str = "http://iceberg-rest:8181"
     warehouse: str = "s3://gdelt-silver/warehouse"
     # MinIO endpoint locally; None on real AWS (the SDK resolves the S3 endpoint).
     s3_endpoint: str | None = "http://minio:9000"
+
+    @property
+    def table_format(self) -> str:
+        """Table format implied by the catalog.
+
+        These are not independent knobs. Unity Catalog managed tables are Delta,
+        and the Glue and REST catalogs here hold Iceberg, so pairing them the
+        wrong way round is not a configuration worth allowing.
+        """
+        return DELTA if self.catalog_type == "databricks" else ICEBERG
 
     @classmethod
     def from_env(cls) -> CatalogConfig:
@@ -40,6 +62,12 @@ class CatalogConfig:
 
 
 def build_spark(app_name: str, catalog: CatalogConfig) -> SparkSession:
+    if catalog.catalog_type == "databricks":
+        # Databricks Runtime has already configured Delta, Unity Catalog, and the
+        # ABFS credentials before this runs. Attaching a catalog here would shadow
+        # the one the workspace provides, so the only thing to do is join it.
+        return SparkSession.builder.appName(app_name).getOrCreate()
+
     c = catalog.name
     conf = {
         "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",

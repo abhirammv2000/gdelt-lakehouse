@@ -2,7 +2,7 @@
 
 Uses ``EVENT_COLUMNS`` as the column list, so it is defined in one place.
 Output columns: the 61 typed event columns, then ``_source_file`` and
-``_ingested_at``. Order matches :func:`gdelt_spark.iceberg.silver_ddl` so the
+``_ingested_at``. Order matches :func:`gdelt_spark.silver_table.silver_ddl` so the
 Iceberg ``MERGE ... INSERT *`` lines up by position and name.
 """
 
