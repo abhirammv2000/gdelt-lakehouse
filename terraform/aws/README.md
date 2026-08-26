@@ -21,7 +21,7 @@ wiring, and Airflow runs locally here.
 ## Usage
 
 ```bash
-cd terraform
+cd terraform/aws
 cp terraform.tfvars.example terraform.tfvars   # set bucket_suffix to your account id
 terraform init
 terraform plan

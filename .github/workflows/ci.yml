@@ -38,11 +38,17 @@ jobs:
         run: docker compose config --quiet
 
   terraform:
-    name: terraform validate
+    # One job per cloud. Both stacks are validated on every push so the Azure
+    # config cannot rot while the AWS one is the only side being exercised.
+    name: terraform validate (${{ matrix.cloud }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [aws, azure]
     defaults:
       run:
-        working-directory: terraform
+        working-directory: terraform/${{ matrix.cloud }}
     steps:
       - uses: actions/checkout@v4
 

@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and adjust.
+project_name = "gdelt-lakehouse"
+environment  = "dev"
+
+# eastus has the widest service availability and the most default vCPU quota on
+# a new subscription, which Databricks clusters need.
+location = "eastus"
+
+# Storage account names are globally unique across all of Azure. Leave this empty
+# to get a random 6-character suffix, or set your own (lowercase alphanumeric).
+storage_account_suffix = ""
+
+# premium is required for Unity Catalog. An idle workspace bills nothing at
+# either tier; only running clusters consume DBUs.
+databricks_sku = "premium"
+
+# Hard cost cap - required. Alerts fire at 50% and 80% of actual spend and at
+# 100% of forecast spend for the month.
+budget_limit_usd   = 10
+budget_alert_email = "you@example.com"

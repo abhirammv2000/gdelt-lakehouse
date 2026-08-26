@@ -1,0 +1,12 @@
+# Copy to backend.tf and fill in to enable remote state with locking.
+# The storage account and container must already exist (bootstrap them once, by
+# hand or a separate root module), because Terraform can't create its own backend.
+# Azure blob leases provide the locking, so there is no DynamoDB equivalent to set up.
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "gdelt-lakehouse-tfstate"
+    storage_account_name = "gdeltlakehousetfstate"
+    container_name       = "tfstate"
+    key                  = "lakehouse/terraform.tfstate"
+  }
+}

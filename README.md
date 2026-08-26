@@ -255,7 +255,8 @@ airflow/dags/         incremental, backfill, and maintenance DAGs
 scripts/              chart generation for the README
 docker/               custom Airflow and Spark images
 docker-compose.yml    local stack
-terraform/            AWS infrastructure (S3, Glue, IAM)
+terraform/aws/        AWS infrastructure (S3, Glue, IAM, budget)
+terraform/azure/      Azure infrastructure (ADLS Gen2, Databricks, RBAC, budget)
 .github/workflows/    CI (ruff, mypy, pytest, terraform validate)
 docs/                 design decisions and roadmap
 ```
