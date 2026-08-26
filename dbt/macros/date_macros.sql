@@ -1,9 +1,10 @@
 {#
   Date helpers dispatched per warehouse, so dim_date and fact_events run the
-  same on DuckDB and BigQuery. DuckDB uses strftime/monthname/dayname and a
-  0=Sunday day-of-week; BigQuery uses format_date and a 1=Sunday day-of-week.
-  year/quarter/month/day are left inline in the models because EXTRACT(...)
-  is identical on both engines.
+  same on every target. DuckDB uses strftime/monthname/dayname and a 0=Sunday
+  day-of-week; BigQuery uses format_date and a 1=Sunday day-of-week; Databricks
+  uses date_format with Java patterns (yyyyMMdd, MMMM, EEEE) and, like BigQuery,
+  a 1=Sunday day-of-week. year/quarter/month/day are left inline in the models
+  because EXTRACT(...) is identical everywhere.
 #}
 
 {# yyyymmdd integer surrogate key for a date (matches fact_events.date_key). #}
@@ -19,6 +20,9 @@
 {% macro athena__yyyymmdd(col) %}
     cast(date_format({{ col }}, '%Y%m%d') as integer)
 {% endmacro %}
+{% macro databricks__yyyymmdd(col) %}
+    cast(date_format({{ col }}, 'yyyyMMdd') as int)
+{% endmacro %}
 
 {# Full month name, e.g. "August". #}
 {% macro month_name(col) %}
@@ -32,6 +36,9 @@
 {% endmacro %}
 {% macro athena__month_name(col) %}
     date_format({{ col }}, '%M')
+{% endmacro %}
+{% macro databricks__month_name(col) %}
+    date_format({{ col }}, 'MMMM')
 {% endmacro %}
 
 {# Full weekday name, e.g. "Monday". #}
@@ -47,6 +54,9 @@
 {% macro athena__day_name(col) %}
     date_format({{ col }}, '%W')
 {% endmacro %}
+{% macro databricks__day_name(col) %}
+    date_format({{ col }}, 'EEEE')
+{% endmacro %}
 
 {# Day of week normalized to 0=Sunday .. 6=Saturday on both engines. #}
 {% macro day_of_week(col) %}
@@ -60,4 +70,7 @@
 {% endmacro %}
 {% macro athena__day_of_week(col) %}
     (day_of_week({{ col }}) % 7)
+{% endmacro %}
+{% macro databricks__day_of_week(col) %}
+    (dayofweek({{ col }}) - 1)
 {% endmacro %}
