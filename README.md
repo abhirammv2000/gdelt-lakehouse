@@ -82,8 +82,7 @@ Numbers below are from an actual run, not estimates. Reproduce with the Quicksta
 
 A single 15-minute GDELT batch held 614 to 2,743 events (median 888) across the nine
 batches loaded. Spark time is dominated by JVM startup at this size; the job is built
-for the shape of the work, not this volume (see
-[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md#7-the-obvious-questions)).
+for the shape of the work, not this volume (see [docs/BENCHMARK.md](docs/BENCHMARK.md)).
 
 **Data quality**: 10,163 of 10,163 rows matched the 61-field contract (0 quarantined),
 and all 9 silver expectations plus all 19 dbt tests passed (`PASS=28 ERROR=0`).
@@ -324,14 +323,8 @@ docker-compose.yml    local stack
 terraform/aws/        AWS infrastructure (S3, Glue, IAM, budget)
 terraform/azure/      Azure infrastructure (ADLS Gen2, Databricks, RBAC, budget)
 .github/workflows/    CI (ruff, mypy, pytest, terraform validate)
-docs/                 design decisions and roadmap
+docs/                 benchmark methodology and results
 ```
-
-## Notes
-
-- Design decisions, trade-offs, and honest answers to the obvious questions:
-  [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)
-- How it was built, phase by phase: [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## License
 

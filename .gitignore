@@ -69,3 +69,7 @@ Thumbs.db
 spark/bench/data/
 spark/bench/tsv/
 spark/bench/results.txt
+
+# Internal planning docs, kept locally, not published
+docs/ROADMAP.md
+docs/DESIGN_DECISIONS.md
