@@ -61,7 +61,7 @@ The gold models therefore build unchanged on four warehouses: DuckDB, BigQuery,
 Athena, and Databricks SQL. Dialect differences (hashing, date formatting,
 incremental strategy) go through adapter-dispatched macros in `dbt/macros/`.
 
-Two honest limits. Airflow runs locally against both clouds rather than on MWAA or
+Two limits. Airflow runs locally against both clouds rather than on MWAA or
 Databricks Workflows, which are a deployment target rather than a code change but
 have not been run. And on AWS, Spark is a local process pointed at S3; only on Azure
 does it run on managed compute, because Unity Catalog managed tables effectively
@@ -83,7 +83,7 @@ Numbers below are from an actual run, not estimates. Reproduce with the Quicksta
 A single 15-minute GDELT batch held 614 to 2,743 events (median 888) across the nine
 batches loaded. Spark time is dominated by JVM startup at this size; the job is built
 for the shape of the work, not this volume (see
-[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md#7-honest-answers-to-the-obvious-questions)).
+[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md#7-the-obvious-questions)).
 
 **Data quality**: 10,163 of 10,163 rows matched the 61-field contract (0 quarantined),
 and all 9 silver expectations plus all 19 dbt tests passed (`PASS=28 ERROR=0`).

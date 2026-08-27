@@ -212,7 +212,7 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 - There are no pipeline metrics beyond Airflow SLAs. Prometheus/Grafana or an
   Airflow callback would add that.
 
-## 7. Honest answers to the obvious questions
+## 7. The obvious questions
 
 ### Why Spark, when the data fits in memory?
 
