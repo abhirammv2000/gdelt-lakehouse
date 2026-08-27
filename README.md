@@ -18,12 +18,14 @@ A bronze / silver / gold medallion layout:
 
 - Ingestion (Python): poll the feed, verify the MD5 checksum, land the raw zips in
   the bronze bucket, and checkpoint so re-runs are safe.
-- Bronze to silver (PySpark + Apache Iceberg): parse the 61 columns, cast and
-  clean, drop duplicates, and MERGE into an Iceberg table. Rows that do not match
-  the 61-field contract go to a rejects table instead of being forced into the data.
+- Bronze to silver (PySpark): parse the 61 columns, cast and clean, drop
+  duplicates, and MERGE into the silver table. Rows that do not match the
+  61-field contract go to a rejects table instead of being forced into the data.
+  The table format follows the catalog: Iceberg on the Glue and REST catalogs,
+  Delta on Unity Catalog. The MERGE statement is identical on both.
 - Silver to gold (dbt): a star schema (`fact_events` plus date, actor, geography,
   and cameo-event dimensions) with 19 dbt tests. The same models run on DuckDB
-  locally and on BigQuery (`dbt build --target bq`).
+  locally and on BigQuery, Athena, and Databricks SQL.
 - Orchestration (Airflow): a 15-minute incremental DAG, a backfill DAG, and a
   weekly Iceberg maintenance DAG.
 - Lineage: Airflow emits OpenLineage events to Marquez.
@@ -34,26 +36,37 @@ Regenerate with `python scripts/plot_architecture.py`.
 
 ## Stack
 
-| Layer | Local | Cloud |
-|---|---|---|
-| Object storage | MinIO | AWS S3 |
-| Table format | Apache Iceberg (REST catalog) | Apache Iceberg (AWS Glue catalog) |
-| Processing | PySpark | PySpark |
-| Warehouse | DuckDB | Athena (AWS) or BigQuery |
-| Transform | dbt | dbt |
-| Orchestration | Airflow | Airflow (MWAA not run) |
-| Infrastructure | Docker Compose | Terraform (S3, Glue, IAM) |
+| Layer | Local | AWS | Azure |
+|---|---|---|---|
+| Object storage | MinIO | S3 | ADLS Gen2 |
+| Catalog | Iceberg REST | Glue Data Catalog | Unity Catalog |
+| Table format | Apache Iceberg | Apache Iceberg | Delta Lake |
+| Processing | PySpark | PySpark | PySpark on Databricks |
+| Warehouse | DuckDB | Athena (or BigQuery) | Databricks SQL |
+| Transform | dbt | dbt | dbt |
+| Orchestration | Airflow | Airflow (MWAA not run) | Airflow (Workflows not run) |
+| Infrastructure | Docker Compose | Terraform (S3, Glue, IAM) | Terraform (ADLS, Databricks, RBAC) |
 
-Everything in the Local column runs with `make up`. The whole pipeline has also been
-run on AWS as one continuous chain: ingestion into S3, the Spark bronze-to-silver job
-writing Iceberg through the Glue catalog, and the dbt gold models built by Athena
-reading that same Glue table, so gold is created in place with no data movement. The
-same models also build on BigQuery (`--target bq`).
+Everything in the Local column runs with `make up`. The pipeline has also been run
+end to end on both clouds, each as one continuous chain with gold created in place
+and no data movement:
 
-One honest limit. Spark, dbt, and Airflow run as local processes pointed at AWS
-rather than on EMR and MWAA, which are a deployment target rather than a code change
-but have not been run. The AWS resources are created with Terraform and destroyed
-after each run, so nothing is standing.
+- **AWS**: ingest into S3, Spark writing Iceberg through the Glue catalog, and the
+  dbt gold models built by Athena over that same Glue table.
+- **Azure**: ingest into ADLS Gen2, Spark on Databricks writing Delta through Unity
+  Catalog, and the dbt gold models built by a Databricks SQL warehouse over that
+  same table.
+
+The gold models therefore build unchanged on four warehouses: DuckDB, BigQuery,
+Athena, and Databricks SQL. Dialect differences (hashing, date formatting,
+incremental strategy) go through adapter-dispatched macros in `dbt/macros/`.
+
+Two honest limits. Airflow runs locally against both clouds rather than on MWAA or
+Databricks Workflows, which are a deployment target rather than a code change but
+have not been run. And on AWS, Spark is a local process pointed at S3; only on Azure
+does it run on managed compute, because Unity Catalog managed tables effectively
+require Databricks compute to write. All cloud resources are created with Terraform
+and torn down after each run.
 
 ## Results
 
@@ -157,9 +170,35 @@ All five gold tables register in Glue as `table_type=ICEBERG` backed by S3, and 
 quad-class query reproduces the same Goldstein polarity as the local run (+5.79 for
 material cooperation, -7.85 for material conflict) on independently ingested data.
 
-The gold models therefore run unchanged on three warehouses: DuckDB, BigQuery, and
-Athena. The dialect differences (hashing, date formatting, incremental strategy) go
-through adapter-dispatched macros in `dbt/macros/`.
+### The same pipeline on Azure
+
+Run end to end against real Azure, with Terraform creating the ADLS Gen2 account,
+the Databricks workspace, and the access connector Unity Catalog authenticates with.
+This run used a full day of GDELT rather than a single batch.
+
+| Stage | Where it ran | Result |
+|---|---|---|
+| Ingest | ADLS Gen2 bronze container | 93 files landed, re-run skipped all 93 |
+| Bronze to silver | Spark on Databricks, Delta on Unity Catalog | 106,909 rows in 59 s, 9/9 quality checks |
+| Gold | dbt via a Databricks SQL warehouse on the same table | `PASS=28 WARN=0 ERROR=0` in 34 s |
+
+Silver is a Delta table in the project's own ADLS container, partitioned by
+`sql_date`, holding exactly one row per `global_event_id` across all 93 source
+files. Re-running the job left the count unchanged, so the recency-guarded MERGE is
+idempotent on Delta exactly as it is on Iceberg.
+
+Gold is the same five-table star schema: 106,909 facts, 1,879 actors, 6,517
+geographies, 207 event types. The quad-class query again reproduces the Goldstein
+polarity (+5.52 material cooperation, -7.94 material conflict), which is the check
+that the dimension keys are right on a third independent load.
+
+**What Azure needed that AWS did not.** Unity Catalog reaches external storage
+through a Databricks *access connector*, a managed identity separate from the
+workspace, and Azure RBAC keeps control-plane rights separate from data-plane
+access, so `Storage Blob Data Contributor` has to be granted explicitly. Both are in
+`terraform/azure/`. Blob versioning is also unavailable on a hierarchical-namespace
+account, so the S3 versioning story has no Azure counterpart; see
+[terraform/azure/README.md](terraform/azure/README.md).
 
 **Orchestration and lineage.** The `gdelt_incremental` DAG runs ingest, bronze to
 silver, and dbt build in sequence. Airflow emits OpenLineage events to Marquez, which
@@ -228,12 +267,39 @@ The window is capped at 30 days (`GDELT_MAX_BACKFILL_DAYS`) so a mistyped range 
 turn one run into a load against GDELT's full archive back to 2015. Widening it is a
 config change, not something a trigger typo can do by accident.
 
-Build the same gold models on BigQuery:
+Build the same gold models on another warehouse:
 
 ```bash
+# BigQuery
 gcloud auth application-default login
 dbt build --target bq --project-dir dbt --profiles-dir dbt
+
+# Databricks SQL (Azure). Terraform prints the host; the HTTP path names a
+# SQL warehouse, not a cluster.
+export DATABRICKS_HOST=$(terraform -chdir=terraform/azure output -raw databricks_host)
+export DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/<warehouse-id>
+export DATABRICKS_TOKEN=<token>
+export GDELT_SILVER_DB=gdelt_lakehouse GDELT_SILVER_SCHEMA=gdelt
+dbt build --target databricks --project-dir dbt --profiles-dir dbt
 ```
+
+Run the whole thing on Azure:
+
+```bash
+cd terraform/azure && cp terraform.tfvars.example terraform.tfvars   # set budget_alert_email
+az login && terraform init && terraform apply
+
+export GDELT_ENV=azure
+export GDELT_AZURE_STORAGE_ACCOUNT=$(terraform output -raw storage_account)
+export GDELT_BRONZE_BUCKET=bronze GDELT_SILVER_BUCKET=silver
+gdelt ingest latest        # lands in ADLS Gen2, no secrets: uses your az login
+```
+
+> **On Git Bash for Windows**, export `MSYS_NO_PATHCONV=1` first. MSYS rewrites
+> leading-slash values into Windows paths, so `/sql/1.0/warehouses/...` silently
+> becomes `C:/Program Files/Git/sql/...` and dbt fails with a 404 that looks like a
+> credentials problem. The same conversion mangles `/Shared/...` workspace paths
+> passed to the Databricks CLI.
 
 ### Local service URLs
 

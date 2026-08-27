@@ -14,11 +14,25 @@ schema handling, and data quality rather than a one-off load. One row is one eve
 
 ## 2. Architecture
 
-Ingest (Python) -> bronze (raw zips in S3/MinIO) -> PySpark -> silver (Iceberg,
-typed and deduped) -> dbt -> gold (star schema in DuckDB or BigQuery). Airflow runs
-the schedule and Marquez collects lineage. Moving to AWS is a change of
-configuration, not code: real S3 endpoints and the Glue catalog in place of MinIO
-and the REST catalog.
+Ingest (Python) -> bronze (raw zips in object storage) -> PySpark -> silver (a
+typed, deduped table) -> dbt -> gold (star schema in a warehouse). Airflow runs the
+schedule and Marquez collects lineage.
+
+Moving between targets is a change of configuration, not code. Three have been run
+end to end:
+
+| | Local | AWS | Azure |
+|---|---|---|---|
+| Bronze | MinIO | S3 | ADLS Gen2 |
+| Catalog | Iceberg REST | Glue | Unity Catalog |
+| Silver format | Iceberg | Iceberg | Delta |
+| Gold | DuckDB | Athena (or BigQuery) | Databricks SQL |
+
+The silver table format follows the catalog rather than being a separate knob,
+because Unity Catalog managed tables are Delta and the Glue and REST catalogs here
+hold Iceberg; the other pairings are not configurations worth allowing. The
+recency-guarded MERGE statement is identical on both formats, so there is only one
+of it to keep correct.
 
 The layers follow the medallion pattern. Bronze is the raw feed, unchanged. Silver
 is typed, cleaned, and deduped. Gold is modeled for querying. Keeping them separate
@@ -37,12 +51,22 @@ inspected on its own.
   Python, which is simple but slow (tens of minutes). A bigger system would cache
   that list or list by date prefix.
 
-### Object storage: S3, with MinIO locally
-One storage layer (`fsspec`/`s3fs`) talks to MinIO locally and S3 on AWS. The only
-difference is the endpoint and credentials, read from the environment. I did not
-want two code paths for storage, and this keeps the local and AWS runs identical.
+### Object storage: S3, ADLS Gen2, and MinIO locally
+One storage layer (`fsspec`) talks to MinIO locally, S3 on AWS, and ADLS Gen2 on
+Azure. `Settings.lake_protocol` and `lake_uri` decide the protocol and path, so
+nothing downstream spells `s3` itself. I did not want two code paths for storage.
 
-### Bronze to silver: PySpark and Apache Iceberg
+Two things are genuinely different rather than just configured differently. Azure
+authenticates with `DefaultAzureCredential`, which picks up an `az login` session,
+so the working path stores no secret at all; Terraform grants that identity
+`Storage Blob Data Contributor` for exactly this reason. And the same object has two
+correct spellings on Azure: Hadoop's ABFS driver wants the account in the authority
+(`abfss://container@account.dfs.core.windows.net`) while `adlfs` takes it as a
+separate argument and rejects it in the URI. On AWS the two coincide, which is what
+makes the difference easy to miss, so `lake_uri` and `lake_url` are separate methods
+with a test pinning both.
+
+### Bronze to silver: PySpark, with Iceberg or Delta
 - Why Iceberg over Hive tables or plain Parquet: it gives ACID commits, snapshots
   (time travel and rollback), hidden partitioning, and schema evolution on top of
   object storage. Plain Parquet has no transactions, and Hive tables have the
@@ -58,11 +82,23 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   directly. I list and fetch the objects with boto3 on the executors and unzip in
   Python. The alternative, adding the hadoop-aws and matching aws-sdk jars, means
   fragile version matching; boto3 is lighter and behaves the same locally and on AWS.
-- Catalog: the same job writes to the Iceberg REST catalog locally or the Glue Data
-  Catalog on AWS, chosen by `GDELT_ICEBERG_CATALOG_TYPE`. Table data goes through
-  `S3FileIO` either way, so only the catalog wiring changes between the two targets.
-- Partitioning by `days(sql_date)`, because that is how the data gets queried and
-  it keeps partitions a reasonable size.
+- Reading zipped CSV on Azure is the opposite situation and gets the opposite
+  answer. Databricks ships the ABFS driver and the cluster already holds the Unity
+  Catalog credential, so Spark reads the files itself with the `binaryFile` source:
+  no SDK, no credentials in the closure, and a distributed listing rather than a
+  driver-side paginate. The unzip is a UDF plus `explode` rather than
+  `rdd.flatMap`, because shared and serverless compute do not expose the RDD API.
+- Catalog: the same job writes to the Iceberg REST catalog locally, the Glue Data
+  Catalog on AWS, or Unity Catalog on Azure, chosen by `GDELT_ICEBERG_CATALOG_TYPE`.
+  The Databricks branch configures nothing at all, because the runtime wires Delta,
+  the catalog, and storage credentials before user code runs; setting them there
+  would shadow the workspace's own. On AWS this project assembles a lakehouse from
+  parts, and on Azure it joins one.
+- Partitioning by day, because that is how the data gets queried and it keeps
+  partitions a reasonable size. Iceberg expresses this as the hidden transform
+  `days(sql_date)`; Delta has no hidden partitioning, so it partitions on
+  `sql_date` directly, which is equivalent because the column is already
+  day-granular.
 - Schema-drift handling: each row is checked against the 61-field contract (a lone
   trailing tab is normalized first). Rows that don't match go to a `..._rejects`
   table with the raw line and the field count, so they are never padded or shifted
@@ -81,7 +117,7 @@ want two code paths for storage, and this keeps the local and AWS runs identical
   values. The relationship tests matter most, since they prove every fact foreign
   key points at a real dimension row.
 
-### Gold: dbt star schema on DuckDB, and on BigQuery
+### Gold: dbt star schema, portable across four warehouses
 - A Kimball star: `fact_events` at one row per event, plus date, actor, geography,
   and cameo-event dimensions. Surrogate keys are `md5(natural_key)` and the same
   macro builds them on both the fact and the dimensions, so the relationship tests
@@ -97,10 +133,14 @@ want two code paths for storage, and this keeps the local and AWS runs identical
 - `dim_actor` is SCD Type 2 (a dbt snapshot) so actor history is kept.
   `dim_geography` and `dim_cameo_event` are Type-1 reference data.
 - A seed maps the 20 CAMEO root codes to readable labels.
-- Warehouse-portable: the same models run on DuckDB, BigQuery, and Athena. The few
-  dialect points (surrogate-key hashing, date formatting, the incremental strategy,
-  the seed column type) go through adapter-dispatched macros, so `--target bq` and
-  `--target athena` build the same star schema and pass the same tests.
+- Warehouse-portable: the same models run on DuckDB, BigQuery, Athena, and
+  Databricks SQL. The few dialect points (surrogate-key hashing, date formatting,
+  the incremental strategy, the seed column type) go through adapter-dispatched
+  macros, so every target builds the same star schema and passes the same tests.
+  Adding Databricks needed five macros and a profile entry and no model changes,
+  which is what the dispatch seam was for. Databricks matches DuckDB on `md5`
+  (hex directly, no `to_hex`) and BigQuery on day-of-week (1=Sunday, subtract one),
+  and is alone in wanting Java date patterns: `yyyyMMdd`, `MMMM`, `EEEE`.
 - Athena is the AWS target and the tidiest of the three, because it reads the same
   Glue/Iceberg silver table the Spark job writes and creates the gold tables as
   Iceberg in S3. Nothing is copied or exported: silver and gold are the same catalog.
@@ -145,7 +185,7 @@ turned into a test, and I would rather say so than imply coverage I do not have.
 | Bucket in a non-default region | The region is always passed to fsspec; without it s3fs signs for us-east-1 and the bucket answers a bare 403 | FM-5 |
 | Out-of-order or replayed batch | The checkpoint is monotonic and never moves backwards | FM-6 |
 | Ingestion silently stops (no new rows land) | Row-level tests can't see a batch that never arrives; `dbt source freshness` checks the newest `date_added` in silver against a 20/60-minute warn/error window instead | `dbt source freshness`, verified locally: `1 of 1 PASS freshness of silver.events` |
-| Silver job re-run on same data | Recency-guarded MERGE leaves the table unchanged | Observed in the runs in the README; not automated |
+| Silver job re-run on same data | Recency-guarded MERGE leaves the table unchanged | Observed on Iceberg (AWS) and on Delta (Azure, count held at 106,909 across two runs); not automated |
 | Spark task fails in a DAG | Airflow retries with backoff, and the MERGE is safe to repeat | Not automated |
 | Catalog restart | SQLite on a volume (WAL + busy_timeout) survives; on AWS this is Glue | Not automated |
 
@@ -272,3 +312,52 @@ a single file is listed. A genuinely large backfill is still possible; it now ta
 deliberately raising that number rather than a typo in a trigger config. The default
 is arbitrary in the sense that any number is - the point is that there is one, it is
 named, and it is enforced in code rather than only described in this document.
+
+### Why Azure as well as AWS, and is Databricks doing real work?
+
+The honest split. Four of the five Azure services map one-to-one onto something the
+AWS build already does, and would be hard to avoid: ADLS Gen2 is the object store,
+Unity Catalog is the Glue Data Catalog, Delta is the table format its catalog
+implies, and a Databricks SQL warehouse plays Athena's part, querying the silver
+table in place so gold is built with no data movement.
+
+The fifth is the arguable one. On AWS, Spark runs as a **local process** pointed at
+S3; EMR was never used. The symmetric Azure choice would have been local Spark
+pointed at ADLS. It is not, and the reason is not that the JD-shaped answer sounds
+better: **Unity Catalog managed tables effectively require Databricks compute to
+write.** Once silver is governed by the catalog rather than being loose files, local
+Spark stops being a clean option, because it would need `hadoop-azure` and
+`delta-spark` wired up and still could not produce a properly governed managed table.
+The catalog choice forced the compute choice.
+
+What that does not excuse: at this volume Databricks is overkill for the same reason
+Spark is, and [BENCHMARK.md](BENCHMARK.md) already puts a number on it. DuckDB
+finishes this transform 16 to 54 times faster than Spark on one machine. Putting a
+distributed platform underneath a job a single process completes in about a second
+does not make it better engineering, and the Azure run does not change that verdict.
+It demonstrates the pattern on managed infrastructure; it does not justify the
+pattern at this size.
+
+Services deliberately **not** used: Data Factory, Synapse, Event Hubs, and Purview.
+Each has an obvious slot in a diagram and none of them has a job here. Ingestion is
+80 lines of Python that already checkpoints and verifies checksums, and orchestration
+is Airflow. Adding a managed service to occupy a box would be architecture chosen for
+how it reads rather than what it does.
+
+### The bug that only appears on managed compute
+
+The first Databricks run of the silver job committed all 106,909 rows and then sat in
+`RUNNING` for 23 minutes. The obvious guess was that something was slow, and the
+obvious guess was wrong: the Spark UI showed **zero active stages and a longest stage
+of 12 seconds**. The work had finished; the job was hung after it.
+
+The cause was `spark.stop()`. A `spark-submit` job owns its session and has to stop
+it so the JVM exits, which is correct locally and on AWS. Databricks creates the
+session before user code runs and reuses it for the life of the cluster, so stopping
+it there pulls the session out from under the runtime, which then waits forever on a
+REPL that is never coming back. `stop_spark()` in `spark/gdelt_spark/session.py` makes
+ownership explicit instead of assuming it. The same job then succeeded in 59 seconds.
+
+This is the kind of portability bug that no amount of local testing finds, because
+locally the assumption is true. It is also why the "same code, three targets" claim
+in the README is worth making only after actually running all three.
