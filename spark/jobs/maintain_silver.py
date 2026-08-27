@@ -30,7 +30,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from gdelt_spark.session import DELTA, CatalogConfig, build_spark
+from gdelt_spark.session import DELTA, CatalogConfig, build_spark, stop_spark
 from pyspark.sql import SparkSession
 
 
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _maintain_iceberg(spark, args.table, catalog.name, args.retain_last, args.min_input_files)
 
-    spark.stop()
+    stop_spark(spark, catalog)
     return 0
 
 

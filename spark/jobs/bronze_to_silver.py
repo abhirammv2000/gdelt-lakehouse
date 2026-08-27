@@ -14,7 +14,7 @@ import os
 import sys
 
 from gdelt_spark.read import AdlsLocation, S3Location, read_bronze
-from gdelt_spark.session import CatalogConfig, build_spark
+from gdelt_spark.session import CatalogConfig, build_spark, stop_spark
 from gdelt_spark.silver_table import rejects_table_name, write_rejects, write_silver
 from gdelt_spark.transform import to_silver
 from gdelt_spark.validate import SILVER_EXPECTATIONS, run_suite
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     total = raw.count()
     if total == 0:
         print("[bronze->silver] no bronze files found - nothing to do")
-        spark.stop()
+        stop_spark(spark, catalog)
         return 0
 
     # -- Schema-contract validation (drift detection) ----------------------------
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     table_count = spark.table(args.table).count()
     print(f"[bronze->silver] merged into {args.table}; table now holds {table_count} events")
 
-    spark.stop()
+    stop_spark(spark, catalog)
     return 0
 
 

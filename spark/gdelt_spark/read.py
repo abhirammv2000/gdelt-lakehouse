@@ -28,7 +28,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+from pyspark.sql import functions as F
+from pyspark.sql.types import (
+    ArrayType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
@@ -135,6 +142,13 @@ def _read_bronze_adls(spark: SparkSession, loc: AdlsLocation, prefix: str) -> Da
     ``pathGlobFilter`` restricts to the zips while ``recursiveFileLookup`` walks
     the dt=/hour= partition directories, so the prefix stays a plain path rather
     than something that has to encode the partition depth.
+
+    The unzip is a UDF returning an array of rows, then ``explode``, rather than
+    ``rdd.flatMap``. That is not a style preference: Unity Catalog's shared and
+    serverless compute do not expose the RDD API at all, so the flatMap version
+    only runs on a dedicated single-user cluster. This version runs on any of
+    them, which matters because serverless is the only compute available on a
+    subscription that cannot allocate cluster VMs.
     """
     files = (
         spark.read.format("binaryFile")
@@ -146,7 +160,10 @@ def _read_bronze_adls(spark: SparkSession, loc: AdlsLocation, prefix: str) -> Da
     if files.isEmpty():
         return spark.createDataFrame([], _raw_schema())
 
-    rdd = files.rdd.flatMap(
-        lambda row: records_from_zip(row.path.rsplit("/", 1)[-1], row.content)
-    )
-    return spark.createDataFrame(rdd, _raw_schema())
+    @F.udf(returnType=ArrayType(_raw_schema()))
+    def _unzip(path: str, content: bytes) -> list[tuple[str | None, ...]]:
+        return list(records_from_zip(path.rsplit("/", 1)[-1], content))
+
+    return files.select(
+        F.explode(_unzip(F.col("path"), F.col("content"))).alias("row")
+    ).select("row.*")

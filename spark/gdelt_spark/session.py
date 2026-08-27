@@ -61,6 +61,22 @@ class CatalogConfig:
         )
 
 
+def stop_spark(spark: SparkSession, catalog: CatalogConfig) -> None:
+    """Release the session, but only when this process owns it.
+
+    A spark-submit job owns its session and should stop it so the JVM exits.
+    Databricks does not: the platform creates the session before user code runs
+    and reuses it for the life of the cluster. Calling stop() there kills the
+    session out from under the runtime, which then waits on a REPL that is never
+    coming back, so the job sits in RUNNING forever with its work already
+    committed. That is exactly what happened the first time this job ran on
+    Databricks: the silver MERGE finished, and the run hung afterwards.
+    """
+    if catalog.catalog_type == "databricks":
+        return
+    spark.stop()
+
+
 def build_spark(app_name: str, catalog: CatalogConfig) -> SparkSession:
     if catalog.catalog_type == "databricks":
         # Databricks Runtime has already configured Delta, Unity Catalog, and the
