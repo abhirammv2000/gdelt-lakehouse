@@ -1,11 +1,7 @@
-# A hard stop on cost, independent of remembering to run `terraform destroy`.
-# Same reasoning as ../aws/budget.tf: the guardrail has to work even when the
-# teardown discipline fails, because that is exactly when it is needed.
+# A hard cost stop, in case I forget to tear things down. Same idea as ../aws/budget.tf.
 #
-# Scoped to the subscription rather than the resource group. A resource-group
-# budget would miss the managed resource group Databricks creates for its VNet
-# and cluster VMs, which is where the actual compute spend lands, so a
-# group-scoped budget would watch the empty half of the account.
+# It covers the whole subscription, not one resource group. Databricks makes its own
+# resource group for its VMs, and a budget on my group would miss that spend.
 resource "azurerm_consumption_budget_subscription" "monthly_cap" {
   name            = "${var.project_name}-monthly-cap"
   subscription_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"

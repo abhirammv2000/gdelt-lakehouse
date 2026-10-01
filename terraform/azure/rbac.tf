@@ -1,25 +1,20 @@
-# Least-privilege access to the lake, the Azure counterpart of ../aws/iam.tf.
+# Least-privilege access to the lake. This is the Azure version of ../aws/iam.tf.
 #
-# Azure RBAC differs from IAM in a way worth stating: control-plane rights over a
-# storage account (Contributor, Owner) do not grant data-plane access to the
-# blobs inside it. Reading a file needs an explicit data role. That is why
-# "Storage Blob Data Contributor" exists as its own assignment rather than being
-# implied by ownership of the account.
+# Owner or Contributor on a storage account does not let you read its blobs. You need a
+# data role for that, so Storage Blob Data Contributor is a separate assignment.
 
 data "azurerm_client_config" "current" {}
 
-# The identity running Terraform also runs the pipeline locally, so it needs data
-# access to the lake it just created. Scoped to this storage account only, not
-# the resource group or subscription.
+# Whoever runs Terraform also runs the pipeline locally, so they need data access to the
+# lake. Scoped to this storage account only.
 resource "azurerm_role_assignment" "operator_lake_data" {
   scope                = azurerm_storage_account.lake.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-# Databricks reaches external storage through the access connector's identity,
-# not the workspace's own, so this needs the same data access to read bronze and
-# write silver Delta tables without an account key baked into a notebook.
+# Databricks reads storage as the access connector, so the connector needs the same data
+# access. That way no account key goes into a notebook.
 resource "azurerm_role_assignment" "databricks_lake_data" {
   scope                = azurerm_storage_account.lake.id
   role_definition_name = "Storage Blob Data Contributor"

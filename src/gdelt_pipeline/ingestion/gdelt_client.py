@@ -96,7 +96,7 @@ class GdeltClient:
         """Download and verify the MD5 checksum GDELT ships in the index."""
         resp = self._get(file.url)
         payload = resp.content
-        digest = hashlib.md5(payload).hexdigest()  # noqa: S324 - integrity, not security
+        digest = hashlib.md5(payload).hexdigest()  # noqa: S324 (integrity, not security)
         if file.md5 and digest != file.md5:
             raise ValueError(f"MD5 mismatch for {file.filename}: {digest} != {file.md5}")
         log.info("downloaded", file=file.filename, bytes=len(payload))

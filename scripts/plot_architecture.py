@@ -1,9 +1,8 @@
-"""Draw the pipeline architecture diagram used in the README.
+"""Draws the architecture diagram used in the README.
 
     python scripts/plot_architecture.py
 
-Writes docs/images/architecture.png. Same palette as plot_benchmark.py so the
-two images read as one document rather than two different tools' defaults.
+Writes docs/images/architecture.png. It uses the same colors as plot_benchmark.py.
 """
 
 from __future__ import annotations
@@ -95,7 +94,7 @@ def main() -> None:
     arrow(ax, (sx, row_a_y), (s2gx, row_b_y + row_h))
     arrow(ax, (8.7 + 1.9, s2gy), (10.95, goldy))
 
-    # -- orchestration ---------------------------------------------------------
+    # orchestration
     orch_y = 0.55
     orch_h = 0.7
     mqx, mqy = box(ax, 0.3, orch_y, 1.6, orch_h, "Marquez", "OpenLineage", TEAL)

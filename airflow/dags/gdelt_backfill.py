@@ -1,18 +1,17 @@
-"""Parameterized GDELT backfill - triggered manually for a historical window.
+"""Backfill DAG for a past date range. Trigger it by hand.
 
-Same medallion wiring as the incremental DAG, but the ingest step pulls every
-15-minute file whose timestamp falls in ``[start, end)`` from GDELT's master file
-list. Trigger with a config like::
+It wires the pipeline the same way as the incremental DAG, but ingest pulls every
+15-minute file between start and end (end not included) from GDELT's master file list.
+Trigger it with a config like:
 
     {"start": "2026-07-20", "end": "2026-07-22"}
 
-Because ingest is checkpoint/existence-guarded and the Iceberg MERGE is
-recency-guarded, re-running a backfill over an already-loaded window is a no-op.
+Ingest is checkpointed and the Iceberg MERGE only overwrites with newer rows, so running
+a window that is already loaded again does nothing.
 
-The window is capped at ``GDELT_MAX_BACKFILL_DAYS`` (30 by default) so a mistyped
-config can't turn one trigger into a multi-year load against GDELT's full archive
-back to 2015. `ingest_window` fails fast with a clear message if the window is
-inverted or too wide; it does not silently truncate it.
+The window is capped at GDELT_MAX_BACKFILL_DAYS (30 by default), so a typo in the config
+can't start a load of the whole archive back to 2015. ingest_window stops with a clear
+error if the window is backwards or too wide. It does not shorten it quietly.
 """
 
 from __future__ import annotations

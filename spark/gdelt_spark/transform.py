@@ -1,9 +1,9 @@
-"""Cast, clean, and de-duplicate raw bronze rows into the silver contract.
+"""Casts, cleans and dedupes raw bronze rows into the silver contract.
 
-Uses ``EVENT_COLUMNS`` as the column list, so it is defined in one place.
-Output columns: the 61 typed event columns, then ``_source_file`` and
-``_ingested_at``. Order matches :func:`gdelt_spark.silver_table.silver_ddl` so the
-Iceberg ``MERGE ... INSERT *`` lines up by position and name.
+It uses EVENT_COLUMNS as the column list, so the list lives in one place. The output is
+the 61 typed event columns, then _source_file and _ingested_at. The order matches
+gdelt_spark.silver_table.silver_ddl, so the Iceberg MERGE ... INSERT * lines up by
+position and name.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def to_silver(raw: DataFrame) -> DataFrame:
     """Type + clean + dedup a raw bronze frame into the silver frame."""
     typed = raw.select(*[_cast_expr(n, s) for n, s in EVENT_COLUMNS], F.col("_source_file"))
 
-    # A row without the primary key can't be modeled or merged - drop it.
+    # A row without the primary key can't be modeled or merged, so drop it.
     typed = typed.filter(F.col(EVENT_KEY).isNotNull())
 
     # Keep the most-recently-added record per event id (idempotent across reruns).

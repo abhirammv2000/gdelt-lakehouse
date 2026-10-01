@@ -1,10 +1,9 @@
-"""Integration test for IngestService against a real moto S3 *server* and a
-mocked GDELT feed.
+"""Integration test for IngestService against a moto S3 server and a mocked GDELT feed.
 
-We use ``ThreadedMotoServer`` (real HTTP) rather than the in-process ``mock_aws``
-decorator because ``s3fs`` talks to S3 through ``aiobotocore``, which does not
-compose with moto's in-process patching. Pointing s3fs at the moto server also
-mirrors exactly how the code talks to MinIO / real S3.
+It uses ThreadedMotoServer (real HTTP) and not the in-process mock_aws decorator, because
+s3fs talks to S3 through aiobotocore and that doesn't work with moto's in-process
+patching. Pointing s3fs at the moto server also matches how the code talks to MinIO or
+real S3.
 """
 
 from __future__ import annotations

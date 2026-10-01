@@ -1,13 +1,13 @@
-"""Create the silver table and MERGE the silver frame into it.
+"""Creates the silver table and MERGEs the silver frame into it.
 
-The MERGE keys on ``global_event_id`` and only overwrites when the incoming
-record is at least as recent as the stored one, so re-running the job on the same
-bronze data is a no-op - the core idempotency guarantee of the pipeline.
+The MERGE matches on global_event_id and only overwrites when the new record is at least
+as recent as the stored one. So running the job again on the same bronze data does
+nothing, which is the idempotency guarantee the pipeline relies on.
 
-Two table formats, because the pipeline targets two clouds: Iceberg on AWS and
-locally, Delta on Databricks. Only the DDL differs. The MERGE statement is
-byte-for-byte identical on both, which is the reason this is one module with a
-format argument rather than two implementations that have to be kept in step.
+There are two table formats because there are two clouds: Iceberg on AWS and locally,
+Delta on Databricks. Only the DDL differs. The MERGE statement is identical for both,
+which is why this is one module with a format argument instead of two copies to keep in
+sync.
 """
 
 from __future__ import annotations

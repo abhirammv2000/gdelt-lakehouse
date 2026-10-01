@@ -8,7 +8,7 @@ Downstream Spark parsing zips this list onto the raw columns.
 
 from __future__ import annotations
 
-# (column_name, semantic_type) - semantic_type drives Spark casting in silver.
+# (column_name, semantic_type); semantic_type drives Spark casting in silver.
 EVENT_COLUMNS: list[tuple[str, str]] = [
     ("global_event_id", "long"),
     ("sql_date", "date_yyyymmdd"),

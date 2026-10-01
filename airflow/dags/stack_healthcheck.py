@@ -1,10 +1,10 @@
-"""A minimal DAG that verifies the local stack is wired correctly.
+"""A small DAG that checks the local stack is wired up.
 
-It confirms two things the rest of the platform depends on:
-  1. the ``gdelt_pipeline`` package is importable inside Airflow, and
-  2. Airflow can reach MinIO and see the bronze/silver buckets.
+It checks two things:
+  1. the gdelt_pipeline package can be imported inside Airflow
+  2. Airflow can reach MinIO and see the bronze and silver buckets
 
-Trigger it once from the Airflow UI after ``make up`` to smoke-test Phase 2.
+Trigger it once from the Airflow UI after `make up`.
 """
 
 from __future__ import annotations

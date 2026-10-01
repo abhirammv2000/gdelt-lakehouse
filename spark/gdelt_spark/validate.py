@@ -1,12 +1,11 @@
-"""A small data-quality gate for the silver frame.
+"""A small data quality gate for the silver frame.
 
-Each check (not_null, unique, in_set, between) runs inside one Spark aggregation,
-so the whole set is a single pass over the data rather than one scan per check. An
-``error`` failure stops the pipeline; a ``warn`` failure is logged and the run
-continues.
+Each check (not_null, unique, in_set, between) runs inside one Spark aggregation, so all
+the checks together take one pass over the data, not one scan each. A failed error check
+stops the pipeline. A failed warn check is logged and the run goes on.
 
-It is a small hand-written engine rather than a bigger framework: nothing extra to
-run, and easy to test.
+It is a small hand-written engine instead of a big framework. There is nothing extra to
+run and it is easy to test.
 """
 
 from __future__ import annotations

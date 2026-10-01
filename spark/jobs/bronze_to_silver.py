@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         stop_spark(spark, catalog)
         return 0
 
-    # -- Schema-contract validation (drift detection) ----------------------------
+    # Schema-contract validation (drift detection)
     # A conformant row has exactly EXPECTED_COLUMN_COUNT fields. Non-conformant
     # rows are quarantined (never silently coerced into good data); a spike in the
     # malformed rate means GDELT changed its layout, so we abort before writing.

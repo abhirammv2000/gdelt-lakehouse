@@ -1,11 +1,8 @@
-# ADLS Gen2 is the Azure counterpart of the S3 buckets in ../aws/s3.tf.
+# ADLS Gen2 is the Azure version of the S3 buckets in ../aws/s3.tf.
 #
-# The one flag that matters here is is_hns_enabled. A storage account without a
-# hierarchical namespace is flat blob storage, where "directories" are just key
-# prefixes and a rename is a copy of every object underneath. With it on, the
-# account is ADLS Gen2: real directories, atomic renames, and POSIX-style ACLs.
-# Spark and Delta Lake both depend on cheap atomic renames for commit protocols,
-# so this is a correctness and performance flag, not a preference.
+# The setting that matters is is_hns_enabled. Without it this is flat blob storage, and
+# renaming a folder copies every file. With it you get real folders and atomic renames,
+# which Spark and Delta need.
 
 resource "random_string" "suffix" {
   length  = 6
@@ -18,9 +15,8 @@ resource "random_string" "suffix" {
 locals {
   suffix = var.storage_account_suffix != "" ? var.storage_account_suffix : random_string.suffix.result
 
-  # Storage account names are globally unique across all of Azure, 3-24 chars,
-  # lowercase alphanumeric only. "gdelt-lakehouse" has to lose its hyphens, and
-  # the name gets truncated to leave room for the suffix.
+  # Storage account names must be unique across Azure, 3 to 24 lowercase letters and digits.
+  # So "gdelt-lakehouse" loses its hyphen and gets cut short to leave room for a suffix.
   storage_account_name = substr(replace("${var.project_name}${var.environment}", "-", ""), 0, 24 - length(local.suffix))
 
   # The medallion object-storage layers, matching the AWS bucket layout. Gold
@@ -61,15 +57,11 @@ resource "azurerm_storage_account" "lake" {
   shared_access_key_enabled       = true # Local Spark authenticates with an account key.
 
   blob_properties {
-    # No versioning_enabled here. Azure does not support blob versioning on an
-    # account with a hierarchical namespace, full stop - Terraform will not even
-    # apply the two together. That is the one place this account cannot mirror
-    # the "keep object history" story the AWS S3 buckets tell with versioning.
+    # No versioning_enabled here. Azure does not allow blob versioning when the hierarchical
+    # namespace is on, so there is no copy of the S3 "keep old versions" setup.
     #
-    # Soft delete is the substitute, and it is a real substitute, not a shrug: it
-    # recovers an overwritten or deleted blob within blob_retention_days. What it
-    # does not give back is full version history the way S3 versioning or
-    # Iceberg's own snapshots do - only the most recent prior state, not every one.
+    # Soft delete is the substitute. It can bring back a deleted or overwritten blob, but only
+    # the last version, not the full history.
     delete_retention_policy {
       days = var.blob_retention_days
     }
@@ -94,14 +86,6 @@ resource "azurerm_storage_container" "layer" {
   container_access_type = "private"
 }
 
-# No lifecycle rule here expiring "old versions", on purpose. Without blob
-# versioning (see the note in blob_properties above) there is no separate
-# noncurrent-version state to expire - only current, live blobs exist. A rule
-# that deletes a blob N days after its last modification, which is what the S3
-# noncurrent-version-expiration pattern would naively become here, would delete
-# live bronze and silver data instead of an old copy of it. That is a
-# correctness bug, not a cost optimization, so it is not written.
-#
-# The real Azure counterpart of the S3 lifecycle rule is soft delete
-# (delete_retention_policy above), which recovers what was actually deleted
-# rather than pruning what is still live.
+# No lifecycle rule for old versions, on purpose. Without versioning there are no old
+# versions, so a rule that deletes blobs after N days would delete live data. Soft delete
+# is the real equivalent.

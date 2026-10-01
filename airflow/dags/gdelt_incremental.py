@@ -1,17 +1,16 @@
-"""Incremental GDELT pipeline - runs every 15 minutes.
+"""Incremental GDELT pipeline. Runs every 15 minutes.
 
-Wires the medallion end to end for the current batch:
+It runs the whole chain for the current batch:
 
-    ingest (poll + land bronze)  ->  bronze_to_silver (PySpark MERGE into Iceberg)
-                                 ->  dbt_build (gold star schema + tests)
+    ingest (poll and land bronze)  ->  bronze_to_silver (PySpark MERGE into Iceberg)
+                                   ->  dbt_build (gold star schema and tests)
 
-Design notes:
-- ``catchup=False`` + ``max_active_runs=1`` - GDELT is a live feed; we always want
-  the latest batch, never a backlog of overlapping runs.
-- Every stage is idempotent (checkpointed ingest, recency-guarded Iceberg MERGE,
-  dbt rebuild), so the automatic retries below are always safe.
-- silver reprocesses only the logical date's partition (``dt={{ ds }}``); the
-  MERGE makes re-runs a no-op.
+Notes:
+- catchup=False and max_active_runs=1, because GDELT is a live feed. We want the latest
+  batch, not a queue of overlapping runs.
+- Every stage is safe to run twice (checkpointed ingest, a MERGE that only takes newer
+  rows, a dbt rebuild), so the automatic retries are safe.
+- Silver only reprocesses the partition for the run's date (dt={{ ds }}).
 """
 
 from __future__ import annotations

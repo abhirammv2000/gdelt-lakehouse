@@ -47,7 +47,7 @@ class IngestService:
         Raises ``ValueError`` for an inverted or over-wide window rather than
         quietly starting a run that could pull years of history. The width limit
         is ``max_backfill_days``; widen it deliberately if a larger backfill is
-        actually intended.
+        intended.
         """
         if end <= start:
             raise ValueError(f"backfill end ({end}) must be after start ({start})")
@@ -58,7 +58,7 @@ class IngestService:
                 f"backfill window is {window_days} days, which is wider than the "
                 f"configured limit of {limit} (GDELT_MAX_BACKFILL_DAYS). Split the "
                 "request into smaller windows, or raise the limit if a run this "
-                "large is actually intended."
+                "large is intended."
             )
         with GdeltClient(
             self._settings.base_url,
@@ -86,7 +86,7 @@ class IngestService:
                 self._storage.write(uri, payload)
                 self._checkpoint.advance(file.feed, file.timestamp)
                 result.landed.append(file.filename)
-            except Exception as exc:  # noqa: BLE001 - record & continue, don't fail the batch
+            except Exception as exc:  # noqa: BLE001 (record and continue, don't fail the batch)
                 log.error("ingest_failed", file=file.filename, error=str(exc))
                 result.failed.append(file.filename)
         log.info("ingest_complete", **result.summary)

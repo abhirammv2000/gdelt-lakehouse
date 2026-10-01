@@ -1,10 +1,9 @@
-"""Chart the engine benchmark from spark/bench/results.jsonl.
+"""Charts the engine benchmark from spark/bench/results.jsonl.
 
     python scripts/plot_benchmark.py
 
-Writes docs/images/benchmark_engines.png. Log-log, because both axes span
-orders of magnitude and the shape of each curve is the point: Spark is a flat
-high line dominated by start-up, DuckDB a low one that barely rises.
+Writes docs/images/benchmark_engines.png. Both axes are log scale because they cover
+orders of magnitude. Spark is a flat, high line (start-up time) and DuckDB stays low.
 """
 
 from __future__ import annotations

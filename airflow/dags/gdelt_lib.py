@@ -1,11 +1,10 @@
 """Shared helpers for the GDELT DAGs.
 
-The bronze->silver step runs PySpark, which lives in its own container. Airflow
-reaches it over the mounted Docker socket and execs ``spark-submit`` in the
-already-running ``spark-iceberg`` service (its code mounts, jars, and network are
-already correct). In a cloud deployment this single function would be swapped for
-a SparkKubernetesOperator / EmrAddStepsOperator / DatabricksSubmitRunOperator -
-the DAGs wouldn't change.
+The bronze to silver step runs PySpark in its own container. Airflow reaches it through
+the mounted Docker socket and runs spark-submit inside the spark-iceberg service, which
+already has the code, jars and network set up. On a cloud setup this one function would
+become a SparkKubernetesOperator, EmrAddStepsOperator or DatabricksSubmitRunOperator, and
+the DAGs would stay the same.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ def _find_spark_container(client):  # type: ignore[no-untyped-def]
     try:
         me = client.containers.get(socket.gethostname())
         project = me.labels.get("com.docker.compose.project")
-    except Exception:  # noqa: BLE001 - best-effort; fall back to service-only match
+    except Exception:  # noqa: BLE001 (best-effort; fall back to service-only match)
         pass
 
     candidates = client.containers.list(

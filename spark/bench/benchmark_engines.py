@@ -1,23 +1,21 @@
-"""Benchmark PySpark against DuckDB and Polars on the bronze-to-silver transform.
+"""Benchmark PySpark against DuckDB and Polars on the bronze to silver transform.
 
-The question: the pipeline uses Spark, and at one 15-minute batch that is hard to
-justify. At what volume does it stop being the wrong tool? Measure it rather than
-argue about it.
+The pipeline uses Spark, which is hard to justify for one 15-minute batch. At what volume
+does it stop being the wrong tool? This measures it.
 
-Method, and the reasons for it:
+How it works:
 
-* The zips are expanded to TSV once, up front (``--prepare``). That cost is shared
-  and is not attributed to any engine.
-* Each engine then reads the same TSV files with its own native CSV reader, casts
-  the 61 columns to the silver types, drops rows with no ``global_event_id``,
-  keeps the newest row per id by ``date_added``, and writes Parquet. Same work,
-  each engine using the idiom you would actually write for it.
-* One engine, one scale, one process. Interpreter and JVM start-up therefore land
-  on the engine that pays them, and nothing warms up a later measurement. Running
-  several engines in a single process was the first version of this script and it
-  produced nonsense: DuckDB looked slower at 24 files than at 1.
-* Row counts are printed so the runs can be checked against each other. If two
-  engines disagree, the benchmark is wrong.
+* The zips are unzipped to TSV once, up front (--prepare). That cost is not counted
+  against any engine.
+* Each engine reads the same TSV files with its own CSV reader, casts the 61 columns to
+  the silver types, drops rows with no global_event_id, keeps the newest row per id by
+  date_added, and writes Parquet. It is the same work, written the way you would write
+  it for each engine.
+* Each run is one engine at one scale in one process, so start-up cost lands on the
+  engine that pays it and nothing warms up a later run. My first version ran several
+  engines in one process and gave nonsense: DuckDB looked slower at 24 files than at 1.
+* Row counts are printed so runs can be checked against each other. If two engines
+  disagree, the benchmark is wrong.
 
     python bench/benchmark_engines.py --prepare
     python bench/benchmark_engines.py --engine duckdb --files 24
@@ -62,7 +60,7 @@ def _files(tsv: str, n: int) -> list[str]:
     return [str(p) for p in sorted(pathlib.Path(tsv).glob("*.tsv"))[:n]]
 
 
-# ---------------------------------------------------------------- duckdb ----
+# duckdb
 def run_duckdb(paths: list[str], out: str) -> int:
     import duckdb
 
@@ -102,7 +100,7 @@ def run_duckdb(paths: list[str], out: str) -> int:
     return int(n)
 
 
-# ---------------------------------------------------------------- polars ----
+# polars
 def run_polars(paths: list[str], out: str) -> int:
     import polars as pl
 
@@ -145,7 +143,7 @@ def run_polars(paths: list[str], out: str) -> int:
     return result.height
 
 
-# ----------------------------------------------------------------- spark ----
+# spark
 def run_spark(paths: list[str], out: str) -> int:
     from gdelt_spark.transform import to_silver
     from pyspark.sql import SparkSession

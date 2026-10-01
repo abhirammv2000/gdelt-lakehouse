@@ -1,5 +1,4 @@
-# -----------------------------------------------------------------------------
-# Local lakehouse stack (Phase 2).
+# Local lakehouse stack.
 #
 #   make up        bring everything up          make down    tear it down
 #   make ps        show health                  make logs    tail everything
@@ -13,8 +12,7 @@
 #   Marquez UI         http://localhost:3000
 #   Marquez API        http://localhost:5000
 #
-# DuckDB is an embedded library (used by dbt in Phase 4), not a service.
-# -----------------------------------------------------------------------------
+# DuckDB is an embedded library (used by dbt), not a service.
 
 x-airflow-common: &airflow-common
   build:
@@ -60,7 +58,7 @@ x-airflow-common: &airflow-common
   networks: [gdelt]
 
 services:
-  # -- Object storage ----------------------------------------------------------
+  # Object storage
   minio:
     image: minio/minio:RELEASE.2024-07-16T23-46-41Z
     command: server /data --console-address ":9001"
@@ -94,7 +92,7 @@ services:
       "
     networks: [gdelt]
 
-  # -- Iceberg REST catalog (Phase 3 silver tables live here) ------------------
+  # Iceberg REST catalog (the silver tables live here)
   iceberg-rest:
     image: apache/iceberg-rest-fixture:1.8.1
     depends_on:
@@ -122,7 +120,7 @@ services:
       - iceberg-catalog:/home/iceberg
     networks: [gdelt]
 
-  # -- Spark + Iceberg (Phase 3 bronze->silver jobs) ----------------------------
+  # Spark + Iceberg (bronze to silver jobs)
   spark-iceberg:
     build:
       context: .
@@ -156,7 +154,7 @@ services:
       - ./src:/opt/gdelt/src
     networks: [gdelt]
 
-  # -- Lineage (OpenLineage -> Marquez) -----------------------------------------
+  # Lineage (OpenLineage -> Marquez)
   marquez-db:
     image: postgres:14
     environment:
@@ -204,7 +202,7 @@ services:
       - "3000:3000"
     networks: [gdelt]
 
-  # -- Orchestration (Airflow, LocalExecutor) ----------------------------------
+  # Orchestration (Airflow, LocalExecutor)
   airflow-db:
     image: postgres:14
     environment:

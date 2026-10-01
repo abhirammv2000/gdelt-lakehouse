@@ -1,21 +1,19 @@
-"""Build a SparkSession wired to the table catalog.
+"""Builds a SparkSession connected to the table catalog.
 
-Three backends, selected by ``GDELT_ICEBERG_CATALOG_TYPE``:
+The backend is chosen with GDELT_ICEBERG_CATALOG_TYPE:
 
-  - ``rest``        (local)  the Iceberg REST fixture, with data in MinIO.
-  - ``glue``        (AWS)    the Glue Data Catalog, with data in S3.
-  - ``databricks``  (Azure)  Unity Catalog and Delta, with data in ADLS Gen2.
+  - rest        (local)  the Iceberg REST fixture, data in MinIO
+  - glue        (AWS)    the Glue Data Catalog, data in S3
+  - databricks  (Azure)  Unity Catalog and Delta, data in ADLS Gen2
 
-For the two Iceberg backends only Iceberg's ``S3FileIO`` handles table data
-(shipped in the base image's iceberg-aws-bundle) - no ``hadoop-aws``/``s3a``
-filesystem is required, because bronze objects are fetched with boto3 (see
-``read.py``), not Spark's FS.
+For the two Iceberg backends only Iceberg's S3FileIO touches table data (it ships in the
+base image's iceberg-aws-bundle). No hadoop-aws or s3a is needed, because bronze objects
+are read with boto3 (see read.py).
 
-Databricks is the odd one out and deliberately configures nothing. The runtime
-already wires Delta, Unity Catalog, and ABFS credential passthrough before user
-code runs, and overriding any of it from here fights the platform rather than
-configuring it. That asymmetry is the honest shape of the problem: on AWS this
-project assembles a lakehouse from parts, and on Azure it rents one.
+Databricks configures nothing on purpose. The runtime already sets up Delta, Unity
+Catalog and the ABFS credentials before our code runs, and changing them from here would
+fight the platform. On AWS this project puts the lakehouse together from parts. On Azure
+Databricks provides it.
 """
 
 from __future__ import annotations

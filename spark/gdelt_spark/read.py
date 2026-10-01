@@ -1,25 +1,21 @@
-"""Read zipped GDELT export CSVs from the bronze layer into a raw-string frame.
+"""Read the zipped GDELT export CSVs from bronze into a frame of raw strings.
 
-GDELT ships ``*.CSV.zip`` (tab-delimited, no header, 61 columns). Spark's CSV
-reader cannot see inside a zip either way, but how the bytes are reached differs
-by platform, and the difference is not cosmetic:
+GDELT ships *.CSV.zip files (tab-delimited, no header, 61 columns). Spark's CSV reader
+can't read inside a zip, and how we get the bytes depends on the platform:
 
-  * S3 / MinIO (``S3Location``): the local Spark image has no ``s3a`` filesystem,
-    so objects are listed with boto3 on the driver, then the keys are
-    parallelized and each is fetched and unzipped on an executor.
+  * S3 / MinIO (S3Location): the local Spark image has no s3a filesystem, so the driver
+    lists the objects with boto3, then each key is fetched and unzipped on an executor.
 
-  * ADLS Gen2 (``AdlsLocation``): Databricks Runtime ships the ABFS driver and
-    the cluster already holds the Unity Catalog credential, so Spark reads the
-    files itself with the ``binaryFile`` source. No SDK, no credentials in the
-    closure, and the listing is distributed rather than a driver-side paginate.
+  * ADLS Gen2 (AdlsLocation): Databricks already has the ABFS driver and the Unity
+    Catalog credential, so Spark reads the files itself with the binaryFile source. No
+    SDK and no credentials to ship around.
 
-Both end up at the same place: a DataFrame of 61 string columns plus
-``_source_file``, ``_field_count``, and ``_raw_line``.
+Both give the same result: a DataFrame of 61 string columns plus _source_file,
+_field_count and _raw_line.
 
-Row parsing and the 61-field contract check live in
-``gdelt_pipeline.schema.parse``; this module is only the Spark plumbing.
-
-Casting/cleaning happens later in ``transform.py``; bronze stays an unmodified copy.
+Row parsing and the 61-field check live in gdelt_pipeline.schema.parse. This module is
+only the Spark side. Casting and cleaning happen later in transform.py, so bronze stays
+an untouched copy.
 """
 
 from __future__ import annotations

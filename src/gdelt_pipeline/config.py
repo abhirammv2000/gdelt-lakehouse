@@ -1,8 +1,7 @@
-"""Central, environment-driven configuration.
+"""Environment-driven configuration.
 
-Every knob is read from the environment (or a local ``.env``) so the exact same
-code runs against local MinIO, real AWS S3, or Azure ADLS Gen2 with only
-``GDELT_ENV`` changing.
+Every setting comes from the environment (or a local .env), so the same code runs against
+local MinIO, AWS S3 or Azure ADLS Gen2 with only GDELT_ENV changing.
 """
 
 from __future__ import annotations
@@ -27,9 +26,8 @@ class Settings(BaseSettings):
     base_url: str = "http://data.gdeltproject.org/gdeltv2"
     feeds: str = "export"  # comma-separated subset of export,mentions,gkg
 
-    # Object storage. bronze_bucket/silver_bucket name an S3 bucket on AWS and a
-    # blob container on Azure. The concept is identical and the code only ever
-    # needs the name, so one pair of settings covers both.
+    # Object storage. The bronze and silver bucket names are an S3 bucket on AWS and a blob
+    # container on Azure. The code only needs the name, so one pair of settings covers both.
     s3_endpoint_url: str | None = None  # None => real AWS S3
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
@@ -37,12 +35,9 @@ class Settings(BaseSettings):
     bronze_bucket: str = "gdelt-bronze"
     silver_bucket: str = "gdelt-silver"
 
-    # Azure ADLS Gen2. The account name is the globally unique storage account
-    # Terraform creates. Leaving the key unset is the better path: adlfs then uses
-    # DefaultAzureCredential, which picks up `az login`, so no secret is stored
-    # anywhere. Terraform grants that identity Storage Blob Data Contributor for
-    # exactly this reason. The key exists as a fallback for Spark running in a
-    # container that has no logged-in Azure CLI to borrow credentials from.
+    # Azure ADLS Gen2. The account name is the storage account Terraform creates. Leave the
+    # key unset if you can. Then adlfs uses DefaultAzureCredential, so `az login` works and no
+    # secret is stored. The key is only a fallback for Spark in a container with no Azure CLI.
     azure_storage_account: str | None = None
     azure_storage_key: str | None = None
 
@@ -54,12 +49,9 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = 60.0
     max_retries: int = 5
 
-    # Backfill scope. GDELT's full history runs back to 2015, which is hundreds
-    # of millions of rows; nothing about the code stops a `gdelt_backfill` trigger
-    # from being pointed at all of it. This caps the window one backfill run can
-    # cover so that "backfill" means a deliberate, bounded catch-up, not an accidental
-    # full-archive load. A full-archive backfill is still possible, but it takes
-    # raising this number on purpose, not a typo in an Airflow trigger config.
+    # Backfill scope. GDELT history goes back to 2015, hundreds of millions of rows, and
+    # nothing else stops a gdelt_backfill trigger from asking for all of it. This caps one run.
+    # To backfill everything you have to raise the number on purpose.
     max_backfill_days: int = 30
 
     @property

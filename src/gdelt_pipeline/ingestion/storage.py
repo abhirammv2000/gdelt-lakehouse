@@ -1,8 +1,7 @@
-"""Thin storage layer over fsspec so bronze writes work identically on
-local disk, MinIO, real AWS S3, and Azure ADLS Gen2.
+"""A thin storage layer over fsspec, so bronze writes work the same on local disk, MinIO,
+AWS S3 and Azure ADLS Gen2.
 
-The protocol and URI both come from ``Settings``, so nothing in here knows
-which cloud it is talking to.
+The protocol and URI both come from Settings, so nothing here knows which cloud it is on.
 """
 
 from __future__ import annotations

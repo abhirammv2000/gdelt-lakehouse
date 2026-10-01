@@ -1,9 +1,8 @@
 """Idempotency checkpoint.
 
-The ingest job records the last GDELT timestamp it successfully landed, per feed,
-in a small JSON object next to the data. Re-running is therefore a no-op for
-already-ingested batches - the property that makes the 15-minute Airflow schedule
-safe to retry.
+The ingest job saves the last GDELT timestamp it landed, per feed, in a small JSON object
+next to the data. So running it again for batches that are already ingested does nothing,
+which is what makes the 15-minute schedule safe to retry.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-"""Bronze -> silver PySpark transforms for the GDELT lakehouse.
+"""Bronze to silver PySpark transforms for the GDELT lakehouse.
 
-The modules here are import-light (PySpark + stdlib + boto3) so they
-can be unit-tested against a local ``SparkSession`` without S3 or an Iceberg
-catalog. The ``jobs/`` entrypoint wires them to the real REST catalog + MinIO.
+These modules only need PySpark, the standard library and boto3, so they can be tested
+against a local SparkSession without S3 or an Iceberg catalog. The jobs/ entrypoint
+connects them to the real REST catalog and MinIO.
 """

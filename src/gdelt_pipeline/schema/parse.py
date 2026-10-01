@@ -1,9 +1,9 @@
 """Parse GDELT export rows against the 61-field schema contract.
 
-This is the heart of the schema-drift handling, and it is deliberately pure
-Python: no Spark, no I/O. The Spark job wraps it (see ``gdelt_spark.read``), but
-keeping the contract logic here means the drift behaviour can be tested without a
-JVM, so it runs in CI rather than only inside the Spark container.
+This is where schema drift is handled, and it is plain Python on purpose: no Spark and no
+I/O. The Spark job wraps it (see gdelt_spark.read). Keeping the logic here means the
+drift behaviour can be tested without a JVM, so it runs in CI and not only inside the
+Spark container.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from collections.abc import Iterator
 
 from gdelt_pipeline.schema.events import EVENT_COLUMN_NAMES
 
-_N_COLS = len(EVENT_COLUMN_NAMES)  # 61 - the schema contract
+_N_COLS = len(EVENT_COLUMN_NAMES)  # 61, the schema contract
 
 
 def normalize_fields(line: str) -> list[str]:

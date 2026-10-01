@@ -1,10 +1,6 @@
-# A hard stop on cost, independent of remembering to run `terraform destroy`.
-# This is account-wide, not scoped to this project's resources: AWS Budgets can
-# filter by cost-allocation tag, but a tag has to be activated by hand in the
-# Billing console and takes up to 24 hours to start appearing in Cost Explorer,
-# so a tag-scoped budget would silently see nothing on a fresh account. An
-# account-wide cap is a real, working guardrail today; a tag-scoped one would
-# be a claim this repo could not back up without a manual step outside Terraform.
+# A hard cost stop, in case I forget to run terraform destroy.
+# It covers the whole account, not just this project. A budget scoped by tag would need the
+# tag turned on by hand in Billing, and it takes a day to show up.
 resource "aws_budgets_budget" "monthly_cap" {
   name         = "${var.project_name}-monthly-cap"
   budget_type  = "COST"

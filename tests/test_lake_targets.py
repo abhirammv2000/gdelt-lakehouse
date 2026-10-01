@@ -1,8 +1,7 @@
 """The lake backend is configuration, not code: same pipeline, three targets.
 
-These pin the parts that are easy to get quietly wrong when a second cloud is
-added. Every Settings here passes ``_env_file=None`` so a developer's local .env
-cannot leak into an assertion.
+These tests pin things that are easy to get wrong when a second cloud is added. Every
+Settings here passes _env_file=None so a local .env can't leak into an assertion.
 """
 
 from __future__ import annotations

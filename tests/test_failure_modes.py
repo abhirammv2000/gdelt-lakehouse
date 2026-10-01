@@ -1,12 +1,9 @@
-"""Executable proof for the failure-mode table in docs/DESIGN_DECISIONS.md.
+"""Tests that trigger each known failure on purpose and check the pipeline handles it.
 
-Every test here triggers a documented failure on purpose and asserts the pipeline
-behaves the way the table claims. The table lists behaviours; this file is the
-evidence that they fire. Test ids are FM-n and the table cites them.
-
-These run in CI (no Spark, no Docker). The Spark-side gates (the silver quality
-suite aborting a write, SchemaDriftError above the malformed-rate threshold) are
-covered by spark/tests, which run in the Spark container via `make spark-test`.
+Test ids are FM-n. These run in CI with no Spark and no Docker. The Spark-side checks
+(the silver quality suite aborting a write, SchemaDriftError above the malformed-rate
+threshold) are covered by spark/tests, which run in the Spark container with
+`make spark-test`.
 """
 
 from __future__ import annotations
@@ -93,9 +90,7 @@ def _row(fields: int, event_id: str) -> str:
     return "\t".join([event_id] + [f"c{i}" for i in range(1, fields)])
 
 
-# ---------------------------------------------------------------------------
 # FM-1  A corrupt file is recorded as failed and the rest of the batch lands.
-# ---------------------------------------------------------------------------
 @respx.mock
 def test_fm1_corrupt_file_fails_alone_and_batch_continues(
     settings: Settings, moto_endpoint: str
@@ -120,9 +115,7 @@ def test_fm1_corrupt_file_fails_alone_and_batch_continues(
     assert result.failed == ["20260101001500.export.CSV.zip"]
 
 
-# ---------------------------------------------------------------------------
 # FM-2  After a partial batch, a re-run lands only what is missing.
-# ---------------------------------------------------------------------------
 @respx.mock
 def test_fm2_rerun_lands_only_the_missing_file(settings: Settings, moto_endpoint: str) -> None:
     _make_bucket(moto_endpoint, "fm-bronze")
@@ -150,9 +143,7 @@ def test_fm2_rerun_lands_only_the_missing_file(settings: Settings, moto_endpoint
     assert service.ingest_latest().summary == {"landed": 0, "skipped": 2, "failed": 0}
 
 
-# ---------------------------------------------------------------------------
 # FM-3  Malformed rows stay separable from good rows in the same batch.
-# ---------------------------------------------------------------------------
 def test_fm3_malformed_rows_are_separable_from_good_rows() -> None:
     from gdelt_pipeline.schema.parse import records_from_zip
 
@@ -175,9 +166,7 @@ def test_fm3_malformed_rows_are_separable_from_good_rows() -> None:
     assert all(isinstance(r[RAW_LINE_IDX], str) and r[RAW_LINE_IDX] for r in parsed)
 
 
-# ---------------------------------------------------------------------------
 # FM-4  A phantom 62nd column is flagged; the historical trailing tab is not.
-# ---------------------------------------------------------------------------
 def test_fm4_phantom_column_detected_and_trailing_tab_is_not() -> None:
     from gdelt_pipeline.schema.parse import records_from_zip
 
@@ -191,10 +180,8 @@ def test_fm4_phantom_column_detected_and_trailing_tab_is_not() -> None:
     assert counts[1] == EXPECTED_COLUMN_COUNT, "a lone trailing tab must be normalised away"
 
 
-# ---------------------------------------------------------------------------
 # FM-5  The region reaches fsspec even with no endpoint or explicit credentials.
 #       Without it s3fs signs for us-east-1 and another region answers a bare 403.
-# ---------------------------------------------------------------------------
 def test_fm5_region_is_always_passed_to_fsspec() -> None:
     # _env_file=None keeps a developer's local .env out of the assertion, so this
     # tests the code rather than whatever happens to be configured on the machine.
@@ -217,9 +204,7 @@ def test_fm5_region_is_always_passed_to_fsspec() -> None:
     }
 
 
-# ---------------------------------------------------------------------------
 # FM-6  The checkpoint is monotonic: a replayed batch cannot move it backwards.
-# ---------------------------------------------------------------------------
 def test_fm6_checkpoint_never_moves_backwards(settings: Settings, moto_endpoint: str) -> None:
     _make_bucket(moto_endpoint, "fm-bronze")
     cp = Checkpoint(settings)

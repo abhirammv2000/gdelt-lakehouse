@@ -22,9 +22,9 @@ Method notes, because they change the answer:
 
 - The zips are expanded to TSV once up front. No engine pays the unzip cost.
 - Each engine reads the TSV with its own native CSV reader, the way you would
-  actually write it for that engine.
+  write it for that engine.
 - **One engine, one scale, one process.** Interpreter and JVM start-up land on the
-  engine that pays them. Start-up is a real per-batch cost here, since each
+  engine that pays them. Start-up is a per-batch cost here, since each
   scheduled run is a fresh `spark-submit`, so it is included deliberately.
 - Median of three runs.
 - Every engine's output row count is recorded. They agree exactly at every scale
@@ -79,7 +79,7 @@ costs you the whole run. None of that shows up at 103,858 rows.
 
 Spark also brings the most complete Iceberg integration: `MERGE INTO`, schema
 evolution, and the maintenance procedures the pipeline uses for compaction and
-snapshot expiry. That is a real reason to keep it that has nothing to do with speed.
+snapshot expiry. That is a reason to keep it that has nothing to do with speed.
 
 ## What I would change
 
@@ -91,6 +91,6 @@ to about 1 and remove a JVM from the hot path.
 I have not made that change. It splits the pipeline into two implementations, which
 is the cost the current single-code-path design was buying, and that trade deserves
 its own decision rather than being smuggled in on the back of a benchmark. But the
-numbers are the numbers, and the honest summary is that the current design pays a
-real and measurable price every 15 minutes for a uniformity benefit that only starts
-to pay off at volumes this project has not yet reached.
+numbers are the numbers: the current design pays a measurable price every 15 minutes
+for a uniformity benefit that only starts to pay off at volumes this project has not
+yet reached.

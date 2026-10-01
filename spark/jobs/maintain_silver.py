@@ -1,26 +1,24 @@
-"""Silver table maintenance: compaction, history expiry, orphan cleanup.
+"""Silver table maintenance: compaction, history cleanup and orphan file removal.
 
-A MERGE-heavy table accumulates many small data files (one write per run, per
-partition) and a growing version history. Left alone, reads get slower and
-catalog metadata bloats. This job runs the maintenance a real lakehouse
-schedules (e.g. weekly).
+A table that is MERGEd often collects many small files (one write per run per partition)
+and a growing history. Left alone, reads slow down and metadata grows. This job does the
+maintenance a real lakehouse runs on a schedule, for example weekly.
 
 Iceberg does it with stored procedures:
 
-  * rewrite_data_files  - bin-pack small files into larger ones (compaction)
+  * rewrite_data_files  - pack small files into bigger ones (compaction)
   * rewrite_manifests   - keep the manifest list tidy
-  * expire_snapshots    - drop old snapshots (bounds time-travel + metadata size)
-  * remove_orphan_files - delete files no live snapshot references
+  * expire_snapshots    - drop old snapshots (limits time travel and metadata size)
+  * remove_orphan_files - delete files no live snapshot uses
 
-Delta does the same work with two SQL commands:
+Delta does the same with two SQL commands:
 
-  * OPTIMIZE            - compaction, the rewrite_data_files equivalent
-  * VACUUM              - drops files no longer referenced by a retained version,
-                          collapsing expire_snapshots and remove_orphan_files
+  * OPTIMIZE - compaction, like rewrite_data_files
+  * VACUUM   - drops files no retained version uses, which covers expire_snapshots and
+               remove_orphan_files
 
-There is no Delta counterpart to rewrite_manifests: Delta's transaction log is
-compacted automatically into checkpoints, so that upkeep is the engine's job
-rather than a scheduled one.
+Delta has no rewrite_manifests. Its transaction log is compacted into checkpoints
+automatically, so there is nothing to schedule.
 
     spark-submit maintain_silver.py --table lakehouse.gdelt.events --retain-last 5
 """
